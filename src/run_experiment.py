@@ -544,12 +544,12 @@ def parse_arguments(args=None):
 
 if __name__ == "__main__":
 	warnings.filterwarnings("ignore", category=sklearn.exceptions.UndefinedMetricWarning)
-	warnings.filterwarnings("ignore", category=pytorch_lightning.utilities.warnings.LightningDeprecationWarning)
+	# warnings.filterwarnings("ignore", category=pytorch_lightning.utilities.warnings.LightningDeprecationWarning)
 
 	print("Starting...")
 
 	logging.basicConfig(
-		filename='/home/am2770/Github/cancer-low-data/logs_exceptions.txt',
+		filename='/home/er647/projects/feature-wise-active-learning/logs_exceptions.txt',
 		filemode='a',
 		format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
 		datefmt='%H:%M:%S',

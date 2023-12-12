@@ -450,6 +450,9 @@ class TrainingLightningModule(pl.LightningModule):
 	"""
 	def __init__(self, args):
 		super().__init__()
+		self.training_step_outputs = []
+		self.validation_step_outputs = []
+		self.test_step_outputs = []
 		self.args = args
 
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
@@ -501,16 +504,18 @@ class TrainingLightningModule(pl.LightningModule):
 		# log temperature of the concrete distribution
 		if isinstance(self.first_layer, ConcreteLayer):
 			self.log("train/concrete_temperature", self.first_layer.get_temperature())
-
-		return {
+		outputs = {
 			'loss': losses['total'],
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1)
 		}
+		self.training_step_outputs.append(outputs)
+		return outputs
 
-	def training_epoch_end(self, outputs):
-		self.log_epoch_metrics(outputs, 'train')
+	def on_train_epoch_end(self):
+		self.log_epoch_metrics(self.training_step_outputs, 'train')
+		self.training_step_outputs.clear()  # free memory
 
 	def validation_step(self, batch, batch_idx, dataloader_idx=0):
 		"""
@@ -521,13 +526,18 @@ class TrainingLightningModule(pl.LightningModule):
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
-		return {
+		output = {
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1)
 		}
+		while len(self.validation_step_outputs) <= dataloader_idx:
+			self.validation_step_outputs.append([])
+   
+		self.validation_step_outputs[dataloader_idx].append(output)
+		return output
 
-	def validation_epoch_end(self, outputs_all_dataloaders):
+	def on_validation_epoch_end(self):
 		"""
 		- outputs: when no_dataloaders==1 --> A list of dictionaries corresponding to a validation step.
 				   when no_dataloaders>1  --> List with length equal to the number of validation dataloaders. Each element is a list with the dictionaries corresponding to a validation step.
@@ -536,8 +546,7 @@ class TrainingLightningModule(pl.LightningModule):
 		# `outputs_all_dataloaders` is expected to a list of dataloaders.
 		# However, when there's only one dataloader, outputs_all_dataloaders is NOT a list.
 		# Thus, we transform it in a list to preserve compatibility
-		if len(self.args.val_dataloaders_name)==1:
-			outputs_all_dataloaders = [outputs_all_dataloaders]
+		outputs_all_dataloaders = self.validation_step_outputs
 
 		for dataloader_id, outputs in enumerate(outputs_all_dataloaders):
 			losses = {
@@ -553,21 +562,33 @@ class TrainingLightningModule(pl.LightningModule):
 
 			self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
 			self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
+		self.validation_step_outputs.clear()
 
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
+		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
 		y_hat, x_hat, sparsity_weights = self.forward(x)
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
-		return {
+		output =  {
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1),
 			'y_hat': y_hat.detach().cpu().numpy()
 		}
+		while len(self.test_step_outputs) <= dataloader_idx:
+			self.test_step_outputs.append([])
+   
+		self.test_step_outputs[dataloader_idx].append(output)
+  
+		return output
 
-	def test_epoch_end(self, outputs):
+	def on_test_epoch_end(self):
+		'''accommodates multiple dataloaders but only uses first'''
+
+		outputs = self.test_step_outputs[0]
+
 		### Save losses
 		losses = {
 			'total': np.mean([output['losses']['total'].item() for output in outputs]),
@@ -706,3 +727,28 @@ class DNN(TrainingLightningModule):
 		y_hat = self.classification_layer(x)           		   # classification, returns logits
 		
 		return y_hat, x_hat, sparsity_weights
+
+class FWAL(TrainingLightningModule):
+    def init(self, args):
+        super().__init__(args)
+        self.args = args
+        
+		self.mask = nn.Parameter(torch.ones(args.num_features), requires_grad=True)        
+		self.reconstruction_module = nn.Linear(args.num_features, args.num_features) # TODO more complex architecture for R module
+		self.prediction_module = nn.Linear(args.num_features, args.num_classes) # TODO more complex architecture for P module
+
+
+    def forward(self, x):
+        # Apply the mask to the input vector
+        
+        sparsity_weights = self.mask
+        
+        masked_x = x * sparsity_weights
+        
+        reconstructed_x = self.reconstruction_module(masked_x)
+        
+        prediction = self.prediction_module(reconstructed_x)
+        
+        
+        
+        return prediction, reconstructed_x, sparsity_weights

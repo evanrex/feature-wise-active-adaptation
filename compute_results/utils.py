@@ -16,10 +16,10 @@ def save_dataframe(df, file_name='test'):
 	"""
 	Save a dataframe as a csv file.
 	"""
-	df.to_csv(f'/home/am2770/Github/cancer-low-data/compute_results/csv/{file_name}.csv')
-	df.to_excel(f'/home/am2770/Github/cancer-low-data/compute_results/csv/{file_name}.xlsx')
+	df.to_csv(f'/home/er647/projects/feature-wise-active-learning/compute_results/csv/{file_name}.csv')
+	df.to_excel(f'/home/er647/projects/feature-wise-active-learning/compute_results/csv/{file_name}.xlsx')
 
-	print(f'DataFrame saved at /home/am2770/Github/cancer-low-data/compute_results/csv/{file_name}.csv')
+	print(f'DataFrame saved at /home/er647/projects/feature-wise-active-learning/compute_results/csv/{file_name}.csv')
 
 
 

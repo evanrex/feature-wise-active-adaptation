@@ -1,5 +1,5 @@
 # BASE_DIR = '/Users/andrei/Documents/GitHub/cancer-low-data' # path to the project directory
-BASE_DIR = '/home/am2770/Github/cancer-low-data' # path to the project directory
+BASE_DIR = '/home/er647/projects/feature-wise-active-learning' # path to the project directory
 
 DATA_DIR = f'{BASE_DIR}/data'
 LOGS_DIR = f'{BASE_DIR}/logs'
