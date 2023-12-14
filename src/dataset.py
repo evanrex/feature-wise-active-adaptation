@@ -212,7 +212,8 @@ def load_smk():
 	return X, Y
 
 def load_simple_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/simple_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'])
+    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/simple_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'], dtype={'y': int})
+
     X = data[['x1','x2','x3','x4','x5']]
     Y = data['y']
     return X, Y

@@ -81,6 +81,10 @@ def create_model(args, data_module=None):
 	Returns a model instance.
 	"""
 	pl.seed_everything(args.seed_model_init, workers=True)
+ 
+	if args.model == 'fwal':
+		model = FWAL(args)
+		return model
 	
 	### create embedding matrices
 	wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
@@ -117,8 +121,6 @@ def create_model(args, data_module=None):
 						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
 
 		model = DNN(args, first_layer, decoder)
-	elif args.model == 'fwal':
-		model = FWAL(args)
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 
@@ -456,6 +458,7 @@ class TrainingLightningModule(pl.LightningModule):
 		self.validation_step_outputs = []
 		self.test_step_outputs = []
 		self.args = args
+		self.learning_rate = args.lr
 
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
@@ -731,10 +734,14 @@ class DNN(TrainingLightningModule):
 		return y_hat, x_hat, sparsity_weights
 
 class FWAL(TrainingLightningModule):
-    def init(self, args):
+    def __init__(self, args):
         super().__init__(args)
         self.args = args
+        self.log_test_key = None
+        self.learning_rate = args.lr
         self.mask = nn.Parameter(torch.sigmoid(torch.randn(args.num_features)), requires_grad=True)
+        self.decoder=True
+        self.first_layer = None
         
 		# Reconstruction Module: 5 layers with 50 neurons each
         self.reconstruction_module = nn.Sequential(

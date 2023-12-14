@@ -1,8 +1,8 @@
 python src/run_experiment.py \
 	--model 'fwal' \
 	--dataset 'simple_synth' \
-	--max_steps 10 \
+	--valid_percentage '0.25' \
 	--wpn_embedding_type 'histogram' \
 	--use_best_hyperparams \
-	--tags 'bad' \     # Run trial runs with this tag, so you know this run is junk
+	--tags 'fwal_first' \     # Run trial runs with "bad" tag, so you know the run is junk
 	# --disable_wandb \  # Disable wanb completly
