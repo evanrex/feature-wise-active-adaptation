@@ -117,6 +117,8 @@ def create_model(args, data_module=None):
 						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
 
 		model = DNN(args, first_layer, decoder)
+	elif args.model == 'fwal':
+		model = FWAL(args)
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 
@@ -732,11 +734,33 @@ class FWAL(TrainingLightningModule):
     def init(self, args):
         super().__init__(args)
         self.args = args
+        self.mask = nn.Parameter(torch.sigmoid(torch.randn(args.num_features)), requires_grad=True)
         
-		self.mask = nn.Parameter(torch.ones(args.num_features), requires_grad=True)        
-		self.reconstruction_module = nn.Linear(args.num_features, args.num_features) # TODO more complex architecture for R module
-		self.prediction_module = nn.Linear(args.num_features, args.num_classes) # TODO more complex architecture for P module
+		# Reconstruction Module: 5 layers with 50 neurons each
+        self.reconstruction_module = nn.Sequential(
+            nn.Linear(args.num_features, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, args.num_features)  # Last layer outputs num_features
+        )
 
+        # Prediction Module: 5 layers with 50 neurons each
+        self.prediction_module = nn.Sequential(
+            nn.Linear(args.num_features, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
+        )
 
     def forward(self, x):
         # Apply the mask to the input vector
@@ -748,7 +772,5 @@ class FWAL(TrainingLightningModule):
         reconstructed_x = self.reconstruction_module(masked_x)
         
         prediction = self.prediction_module(reconstructed_x)
-        
-        
         
         return prediction, reconstructed_x, sparsity_weights

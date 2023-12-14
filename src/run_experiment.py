@@ -339,7 +339,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet'], default='dnn')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='dnn')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
 						help='layer size for the feature extractor. If using a virtual layer,\
 							  the first dimension must match it.')
@@ -599,7 +599,7 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_synth']
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
