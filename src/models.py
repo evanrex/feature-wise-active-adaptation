@@ -569,7 +569,6 @@ class TrainingLightningModule(pl.LightningModule):
 			self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
 		self.validation_step_outputs.clear()
 
-
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
@@ -620,7 +619,10 @@ class TrainingLightningModule(pl.LightningModule):
 			global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
 			wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
 
-
+	def on_train_end(self):
+		'''logs mask parameters to wandb'''
+		wandb.log({"best_mask_parameters": self.mask.data})
+  
 	def configure_optimizers(self):
 		params = self.parameters()
 
@@ -739,7 +741,7 @@ class FWAL(TrainingLightningModule):
         self.args = args
         self.log_test_key = None
         self.learning_rate = args.lr
-        self.mask = nn.Parameter(torch.sigmoid(torch.randn(args.num_features)), requires_grad=True)
+        self.mask = nn.Parameter(torch.randn(args.num_features), requires_grad=True)
         self.decoder=True
         self.first_layer = None
         
@@ -772,7 +774,7 @@ class FWAL(TrainingLightningModule):
     def forward(self, x):
         # Apply the mask to the input vector
         
-        sparsity_weights = self.mask
+        sparsity_weights = torch.sigmoid(self.mask)
         
         masked_x = x * sparsity_weights
         
