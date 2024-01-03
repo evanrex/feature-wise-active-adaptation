@@ -7,5 +7,6 @@ RESULTS_DIR = f"{BASE_DIR}/results"
 LOGS_DIR = f'{BASE_DIR}/logs'
 
 WANDB_PROJECT = 'fwal'
+WANDB_ENTITY = 'evangeorgerex'
 
 SEED_VALUE = 42

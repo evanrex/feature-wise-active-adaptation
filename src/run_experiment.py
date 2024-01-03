@@ -25,6 +25,9 @@ import logging
 from dataset import *
 from models import *
 from _config import DATA_DIR
+from evaluation_utils import *
+
+import glob
 
 def get_run_name(args):
 	if args.model=='dnn':
@@ -48,6 +51,7 @@ def create_wandb_logger(args):
 		job_type=args.job_type,
 		tags=args.tags,
 		notes=args.notes,
+		entity=WANDB_ENTITY,
 		# reinit=True,
 
 		log_model=args.wandb_log_model,
@@ -214,28 +218,46 @@ def run_experiment(args):
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
-		#### Create model
-		model = create_model(args, data_module)
+		if args.evaluate_trained_FWAL_model:
+			if not args.trained_FWAL_model_run_name:
+				raise Exception('--trained_FWAL_model_run_name must be passed if --evaluate_trained_FWAL_model is passed. ')
+			ckpt_path = os.path.join('fwal',args.trained_FWAL_model_run_name, 'checkpoints')
+			if not os.path.exists(ckpt_path):
+				raise FileNotFoundError(f"Directory not found at {ckpt_path}")
 
-		trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
-
-		if args.train_on_full_data:
-			checkpoint_path = checkpoint_callback.last_model_path
+			checkpoint_files = glob.glob(os.path.join(ckpt_path, '*.ckpt'))
+			if not checkpoint_files:
+				raise FileNotFoundError(f"No .ckpt files found in {ckpt_path}")
+			checkpoint_path = checkpoint_files[0]
+			checkpoint_files = [file for file in checkpoint_files if not file.endswith('last.ckpt')]
+			if checkpoint_files:
+				checkpoint_path = checkpoint_files[0] 
+			trained_model = FWAL.load_from_checkpoint(checkpoint_path, args=args)
+			if args.evaluate_trained_FWAL_model == "evaluate_test_time_interventions":
+				evaluate_test_time_interventions(trained_model, data_module, args, wandb_logger)
 		else:
-			checkpoint_path = checkpoint_callback.best_model_path
+			#### Create model
+			model = create_model(args, data_module)
 
-			print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
-			wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
+			trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
 
-		#### Compute metrics for the best model
-		model.log_test_key = 'bestmodel_train'
-		trainer.test(model, dataloaders=data_module.train_dataloader(), ckpt_path=checkpoint_path)
+			if args.train_on_full_data:
+				checkpoint_path = checkpoint_callback.last_model_path
+			else:
+				checkpoint_path = checkpoint_callback.best_model_path
 
-		model.log_test_key = 'bestmodel_valid'
-		trainer.test(model, dataloaders=data_module.val_dataloader()[0], ckpt_path=checkpoint_path)
+				print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
+				wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
 
-		model.log_test_key = 'bestmodel_test'
-		trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
+			#### Compute metrics for the best model
+			model.log_test_key = 'bestmodel_train'
+			trainer.test(model, dataloaders=data_module.train_dataloader(), ckpt_path=checkpoint_path)
+
+			model.log_test_key = 'bestmodel_valid'
+			trainer.test(model, dataloaders=data_module.val_dataloader()[0], ckpt_path=checkpoint_path)
+
+			model.log_test_key = 'bestmodel_test'
+			trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
 
 	
 	wandb.finish()
@@ -392,6 +414,8 @@ def parse_arguments(args=None):
 						choices=['L1', 'hoyer'])
 	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
+	parser.add_argument('--mask_type', type=str, default='sigmoid',
+						choices=['sigmoid', 'probabilistic'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If probabilistic then it is a probabilistically sampled mask of either 0 or 1')
 
 
 	####### DKL
@@ -486,7 +510,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--custom_train_size', type=int, default=None)
 	parser.add_argument('--custom_valid_size', type=int, default=None)
 	parser.add_argument('--custom_test_size', type=int, default=None)
-
+ 
+	####### Custom evaluation
+	parser.add_argument('--evaluate_trained_FWAL_model', type=str, choices = ['evaluate_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
+	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')
@@ -599,7 +626,7 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_synth']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_synth', 'very_simple_synth']
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 

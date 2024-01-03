@@ -613,11 +613,11 @@ class TrainingLightningModule(pl.LightningModule):
 
 
 		### Save global feature importances
-		if self.args.sparsity_type == 'global':
-			feature_importance = self.feature_extractor.sparsity_model.forward(None).cpu().detach().numpy()
+		# if self.args.sparsity_type == 'global':
+		# 	feature_importance = self.feature_extractor.sparsity_model.forward(None).cpu().detach().numpy()
 			
-			global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
-			wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
+		# 	global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
+		# 	wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
 
 	def on_train_end(self):
 		'''logs mask parameters to wandb'''
@@ -772,10 +772,15 @@ class FWAL(TrainingLightningModule):
         )
 
     def forward(self, x):
-        # Apply the mask to the input vector
-        
+        """
+        Forward pass for training
+        """
+       
         sparsity_weights = torch.sigmoid(self.mask)
         
+        if self.args.mask_type == "probabilistic":
+            sparsity_weights = torch.bernoulli(sparsity_weights)
+            
         masked_x = x * sparsity_weights
         
         reconstructed_x = self.reconstruction_module(masked_x)
@@ -783,3 +788,49 @@ class FWAL(TrainingLightningModule):
         prediction = self.prediction_module(reconstructed_x)
         
         return prediction, reconstructed_x, sparsity_weights
+    
+    def necessary_features(self):
+        """
+        Returns a boolean mask for which features are deemed necessary and which are not
+        """
+        if self.args.mask_type == "sigmoid":
+            threshold = 0.01 # TODO get from args
+            return torch.sigmoid(self.mask) > threshold
+        elif self.args.mask_type =="probabilistic":
+            return self.mask > 0
+        
+    def inference(self, x):
+        """
+        Performs inference with test-time interventions
+        """
+        x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
+    
+        # Step 1: Replace None (or equivalent) values with 0
+        # Assuming x is a tensor and None values are represented as NaNs
+        original_x = x.clone()  # Keep a copy of the original x for later
+        x = torch.nan_to_num(x, nan=0.0)
+        
+        # constructing sparsity weights from mask module
+        sparsity_weights = torch.sigmoid(self.mask)
+        if self.args.mask_type == "probabilistic":
+            sparsity_weights = torch.bernoulli(sparsity_weights)
+            
+        # Apply the sparsity_weights mask to the input vector
+        masked_x = x * sparsity_weights
+        
+        # Step 2: Reconstruction as in the original forward pass
+        reconstructed_x = self.reconstruction_module(masked_x)
+        
+        # Step 3: Replace reconstructed values with original non-None values
+        # Assuming None values were NaN and were replaced with 0 in original_x
+        mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
+        reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
+        
+        # Return the reconstructed_x and prediction
+        prediction = self.prediction_module(reconstructed_x)
+        
+        prediction = torch.softmax(prediction, dim=1)
+        
+        return prediction
+
+
