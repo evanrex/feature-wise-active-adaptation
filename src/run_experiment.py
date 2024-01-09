@@ -543,6 +543,7 @@ def parse_arguments(args=None):
 	# SEEDS
 	parser.add_argument('--seed_model_init', type=int, default=42, help='Seed for initializing the model (to have the same weights)')
 	parser.add_argument('--seed_model_mask', type=int, default=42, help='Seed for initializing the model mask (to have the same weights)')
+	parser.add_argument('--mask_init_value', type=int, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation.')
 	parser.add_argument('--seed_training', type=int, default=42, help='Seed for training (e.g., batch ordering)')
 
 	parser.add_argument('--seed_kfold', type=int, help='Seed used for doing the kfold in train/test split')

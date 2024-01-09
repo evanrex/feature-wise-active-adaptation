@@ -742,8 +742,11 @@ class FWAL(TrainingLightningModule):
         self.log_test_key = None
         self.learning_rate = args.lr
         
-        mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
-        self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+        if self.args.mask_init_value is None:
+            mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+            self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+        else:
+            self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)
         
         self.decoder=True
         self.first_layer = None
