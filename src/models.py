@@ -74,7 +74,7 @@ General components of a model
 
 WeightPredictorNetwork(optional) -> FeatureExtractor -> Decoder (optional) -> DNN/DKL
 """
-def create_model(args, data_module=None):
+def create_model(args, data_module):
 	"""
 	Function to create the model. Firstly creates the components (e.g., FeatureExtractor, Decoder) and then assambles them.
 
@@ -114,7 +114,7 @@ def create_model(args, data_module=None):
 	elif args.model in ['dnn', 'dietdnn']:
 		if args.model=='dnn':
 			is_diet_layer = False
-		elif args.model=='dietdnn':
+		else: # args.model=='dietdnn':
 			is_diet_layer = True
 		
 		first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
@@ -741,7 +741,10 @@ class FWAL(TrainingLightningModule):
         self.args = args
         self.log_test_key = None
         self.learning_rate = args.lr
-        self.mask = nn.Parameter(torch.randn(args.num_features), requires_grad=True)
+        
+        mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+        self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+        
         self.decoder=True
         self.first_layer = None
         
@@ -770,18 +773,25 @@ class FWAL(TrainingLightningModule):
             nn.ReLU(),
             nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
         )
+    
+    def mask_module(self, x):
+        # constructing sparsity weights from mask module
+        if self.args.mask_type == "sigmoid":
+            sparsity_weights = torch.sigmoid(self.mask)
+        elif self.args.mask_type == "gumbel_softmax":
+            sparsity_weights = torch.nn.functional.gumbel_softmax(self.mask, hard=True)
+        else:
+            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+            
+        return x * sparsity_weights, sparsity_weights
+        
 
     def forward(self, x):
         """
         Forward pass for training
         """
-       
-        sparsity_weights = torch.sigmoid(self.mask)
         
-        if self.args.mask_type == "probabilistic":
-            sparsity_weights = torch.bernoulli(sparsity_weights)
-            
-        masked_x = x * sparsity_weights
+        masked_x, sparsity_weights = self.mask_module(x)
         
         reconstructed_x = self.reconstruction_module(masked_x)
         
@@ -794,10 +804,15 @@ class FWAL(TrainingLightningModule):
         Returns a boolean mask for which features are deemed necessary and which are not
         """
         if self.args.mask_type == "sigmoid":
-            threshold = 0.01 # TODO get from args
-            return torch.sigmoid(self.mask) > threshold
-        elif self.args.mask_type =="probabilistic":
+            sigmoid_mask = torch.sigmoid(self.mask)
+            _, indices = torch.topk(sigmoid_mask, self.args.num_necessary_features)  # Get the indices of the top k values
+            boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
+            boolean_mask[indices] = True  # Set the top k indices to True
+            return boolean_mask
+        elif self.args.mask_type =="gumbel_softmax":
             return self.mask > 0
+        else:
+            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
         
     def inference(self, x):
         """
@@ -810,13 +825,7 @@ class FWAL(TrainingLightningModule):
         original_x = x.clone()  # Keep a copy of the original x for later
         x = torch.nan_to_num(x, nan=0.0)
         
-        # constructing sparsity weights from mask module
-        sparsity_weights = torch.sigmoid(self.mask)
-        if self.args.mask_type == "probabilistic":
-            sparsity_weights = torch.bernoulli(sparsity_weights)
-            
-        # Apply the sparsity_weights mask to the input vector
-        masked_x = x * sparsity_weights
+        masked_x, sparsity_weights = self.mask_module(x)
         
         # Step 2: Reconstruction as in the original forward pass
         reconstructed_x = self.reconstruction_module(masked_x)

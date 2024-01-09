@@ -415,7 +415,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
 	parser.add_argument('--mask_type', type=str, default='sigmoid',
-						choices=['sigmoid', 'probabilistic'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If probabilistic then it is a probabilistically sampled mask of either 0 or 1')
+						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
 
 
 	####### DKL
@@ -510,7 +510,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--custom_train_size', type=int, default=None)
 	parser.add_argument('--custom_valid_size', type=int, default=None)
 	parser.add_argument('--custom_test_size', type=int, default=None)
- 
+	
+	####### Test Time interventions
+	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
+	
 	####### Custom evaluation
 	parser.add_argument('--evaluate_trained_FWAL_model', type=str, choices = ['evaluate_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
@@ -539,6 +542,7 @@ def parse_arguments(args=None):
 
 	# SEEDS
 	parser.add_argument('--seed_model_init', type=int, default=42, help='Seed for initializing the model (to have the same weights)')
+	parser.add_argument('--seed_model_mask', type=int, default=42, help='Seed for initializing the model mask (to have the same weights)')
 	parser.add_argument('--seed_training', type=int, default=42, help='Seed for training (e.g., batch ordering)')
 
 	parser.add_argument('--seed_kfold', type=int, help='Seed used for doing the kfold in train/test split')
@@ -563,10 +567,13 @@ def parse_arguments(args=None):
 	parser.add_argument('--disable_wandb', action='store_true', dest='disable_wandb',
 						help='True if you dont want to crete wandb logs.')
 	parser.set_defaults(disable_wandb=False)
-	
 
+	args = parser.parse_args(args)
 
-	return parser.parse_args(args)
+	if args.seed_model_mask is None:
+		args.seed_model_mask = args.seed_model_init
+
+	return args
 
 
 if __name__ == "__main__":
@@ -626,7 +633,7 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_synth', 'very_simple_synth']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth']
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
