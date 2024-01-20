@@ -17,7 +17,6 @@ from torch import nn
 from lookahead_optimizer import Lookahead
 from sparsity import LearnableSparsityVector, SparsityNetwork
 
-
 def get_labels_lists(outputs):
 	all_y_true, all_y_pred = [], []
 	for output in outputs:
@@ -802,13 +801,16 @@ class FWAL(TrainingLightningModule):
         
         return prediction, reconstructed_x, sparsity_weights
     
-    def necessary_features(self):
+    def necessary_features(self, k=None):
         """
-        Returns a boolean mask for which features are deemed necessary and which are not
+        k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
+        Returns a boolean mask for which features are deemed necessary and which are not.
         """
+        if k == None:
+            k = self.args.num_necessary_features
         if self.args.mask_type == "sigmoid":
             sigmoid_mask = torch.sigmoid(self.mask)
-            _, indices = torch.topk(sigmoid_mask, self.args.num_necessary_features)  # Get the indices of the top k values
+            _, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
             boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
             boolean_mask[indices] = True  # Set the top k indices to True
             return boolean_mask

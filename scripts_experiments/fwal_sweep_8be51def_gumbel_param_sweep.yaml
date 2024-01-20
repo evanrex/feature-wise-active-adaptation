@@ -23,9 +23,9 @@ command:
 - --test_time_interventions 
 - evaluate_test_time_interventions
 - --tags
-- 264b29f6 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- 8be51def # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "Comparing mask impelmentations: Probabilistic vs Sigmoid. Goal is to learn a mask. Varying sparsity coefficient as well as datasets too."
+- "Gumbel parameter sweep. All 5 datasets. x3 test splits x3 weight inits"
 - ${args}
 
 method: grid
@@ -42,7 +42,6 @@ parameters:
   mask_type:
     distribution: categorical
     values:
-    - sigmoid
     - gumbel_softmax
 
   seed_model_init:  # number of folds
@@ -51,8 +50,6 @@ parameters:
     - 0
     - 1
     - 2
-    - 3
-    - 4
 
   test_split: # defines different splits
     distribution: categorical
@@ -60,5 +57,3 @@ parameters:
     - 0
     - 1
     - 2
-    - 3
-    - 4

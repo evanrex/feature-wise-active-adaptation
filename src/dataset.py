@@ -225,6 +225,27 @@ def load_simple_trig_synth():
     Y = data['y']
     return X, Y
 
+def load_exponential_interaction_synth():
+    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/exponential_interaction_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+
+    X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
+    Y = data['y']
+    return X, Y
+
+def load_summed_squares_exponential_synth():
+    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/summed_squares_exponential_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+
+    X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
+    Y = data['y']
+    return X, Y
+
+def load_trigonometric_polynomial_synth():
+    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/trigonometric_polynomial_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+
+    X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
+    Y = data['y']
+    return X, Y
+
 def sample_dataset(args, dataset, label, train_size, valid_size, test_size):
 	#### Set train/valid/test sizes
 	# Create test set
@@ -674,7 +695,7 @@ def create_data_module(args):
 			elif args.testing_type=='cross-validation':
 				X, y = load_csv_data(args.train_path)
 				data_module = create_datamodule_with_cross_validation(args, X, y)
-		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth']:
+		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']:
 			if dataset=='lung':
 				X, y = load_lung()
 			elif dataset=='toxicity':
@@ -689,6 +710,12 @@ def create_data_module(args):
 				X, y = load_simple_trig_synth()
 			elif dataset=='simple_linear_synth':
 				X, y = load_simple_linear_synth()
+			elif dataset=='exponential_interaction_synth':
+				X, y = load_exponential_interaction_synth()
+			elif dataset=='summed_squares_exponential_synth':
+				X, y = load_summed_squares_exponential_synth()
+			elif dataset=='trigonometric_polynomial_synth':
+				X, y = load_trigonometric_polynomial_synth()
     
 			data_module = create_datamodule_with_cross_validation(args, X, y)
 

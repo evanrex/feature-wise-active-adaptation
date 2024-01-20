@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: mask_implementation_sigmoid_v_probabilistic
+name: rand_mask_init
 
 command:
 - ${env}
@@ -23,9 +23,9 @@ command:
 - --test_time_interventions 
 - evaluate_test_time_interventions
 - --tags
-- 264b29f6 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- ca003302 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "Comparing mask impelmentations: Probabilistic vs Sigmoid. Goal is to learn a mask. Varying sparsity coefficient as well as datasets too."
+- "Evaluating random mask init. Gumbel and Softmax. All 5 datasets. x3 test splits x3 weight inits"
 - ${args}
 
 method: grid
@@ -45,7 +45,7 @@ parameters:
     - sigmoid
     - gumbel_softmax
 
-  seed_model_init:  # number of folds
+  seed_model_mask:  # number of folds
     distribution: categorical
     values:
     - 0
@@ -54,11 +54,16 @@ parameters:
     - 3
     - 4
 
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+
   test_split: # defines different splits
     distribution: categorical
     values: 
     - 0
     - 1
     - 2
-    - 3
-    - 4

@@ -10,7 +10,7 @@ import wandb
 from dataset import create_data_module
 from models import create_model
 from notebooks._utils import DictObj
-
+import numpy as np
 
 def save_dataframe(df, file_name='test'):
 	"""

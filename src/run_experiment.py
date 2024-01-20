@@ -218,9 +218,9 @@ def run_experiment(args):
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
-		if args.evaluate_trained_FWAL_model:
+		if args.only_test_time_intervention_eval:
 			if not args.trained_FWAL_model_run_name:
-				raise Exception('--trained_FWAL_model_run_name must be passed if --evaluate_trained_FWAL_model is passed. ')
+				raise Exception('--trained_FWAL_model_run_name must be passed if --only_test_time_intervention_eval is passed. ')
 			ckpt_path = os.path.join('fwal',args.trained_FWAL_model_run_name, 'checkpoints')
 			if not os.path.exists(ckpt_path):
 				raise FileNotFoundError(f"Directory not found at {ckpt_path}")
@@ -233,13 +233,20 @@ def run_experiment(args):
 			if checkpoint_files:
 				checkpoint_path = checkpoint_files[0] 
 			trained_model = FWAL.load_from_checkpoint(checkpoint_path, args=args)
-			if args.evaluate_trained_FWAL_model == "evaluate_test_time_interventions":
+			if args.test_time_interventions == "evaluate_test_time_interventions":
 				evaluate_test_time_interventions(trained_model, data_module, args, wandb_logger)
+			elif args.test_time_interventions == "assist_test_time_interventions":
+				assist_test_time_interventions(trained_model, data_module, args, wandb_logger)
 		else:
 			#### Create model
 			model = create_model(args, data_module)
 
 			trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
+
+			if args.test_time_interventions == "evaluate_test_time_interventions":
+				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
+			elif args.test_time_interventions == "assist_test_time_interventions":
+				assist_test_time_interventions(model, data_module, args, wandb_logger)
 
 			if args.train_on_full_data:
 				checkpoint_path = checkpoint_callback.last_model_path
@@ -424,7 +431,7 @@ def parse_arguments(args=None):
 
 
 	####### Weight predictor network
-	parser.add_argument('--wpn_embedding_type', type=str, default='nmf',
+	parser.add_argument('--wpn_embedding_type', type=str, default='histogram',
 						choices=['histogram', 'all_patients', 'nmf', 'svd'],
 						help='histogram = histogram x means (like FsNet)\
 							  all_patients = randomly pick patients and use their gene expressions as the embedding\
@@ -515,7 +522,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
 	
 	####### Custom evaluation
-	parser.add_argument('--evaluate_trained_FWAL_model', type=str, choices = ['evaluate_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
+	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
+	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 
 	####### Optimization
@@ -634,7 +642,7 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
