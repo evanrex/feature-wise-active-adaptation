@@ -65,10 +65,12 @@ parameters:
     distribution: categorical
     values:
     - 0
-    
-  test_split: # defines different splits
-    distribution: categorical
-    values: 
-    - 0
     - 1
     - 2
+
+  # test_split: # defines different splits
+  #   distribution: categorical
+  #   values: 
+  #   - 0
+  #   - 1
+  #   - 2
