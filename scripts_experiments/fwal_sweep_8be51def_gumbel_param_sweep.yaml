@@ -51,6 +51,11 @@ parameters:
     - 1
     - 2
 
+  repeat_id:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    
   test_split: # defines different splits
     distribution: categorical
     values: 

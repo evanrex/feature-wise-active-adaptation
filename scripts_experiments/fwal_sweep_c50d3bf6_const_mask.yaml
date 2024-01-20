@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: const_mask_init
+name: const_mask_init_1
 
 command:
 - ${env}
@@ -58,6 +58,11 @@ parameters:
     - 0
     - 1
     - 2
+
+  repeat_id:  # number of folds
+    distribution: categorical
+    values:
+    - 0
 
   test_split: # defines different splits
     distribution: categorical
