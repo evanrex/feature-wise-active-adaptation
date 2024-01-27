@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: rand_mask_init
+name: rand_mask_init_gumbel
 
 command:
 - ${env}
@@ -22,6 +22,9 @@ command:
 - 1
 - --test_time_interventions 
 - evaluate_test_time_interventions
+- --hpc_run
+- --num_workers
+- 31 # optimal for HPC
 - --tags
 - ca003302 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
@@ -42,7 +45,7 @@ parameters:
   mask_type:
     distribution: categorical
     values:
-    - sigmoid
+    # - sigmoid
     - gumbel_softmax
 
   seed_model_mask:  # number of folds
@@ -65,8 +68,8 @@ parameters:
     distribution: categorical
     values:
     - 0
-    - 1
-    - 2
+    # - 1
+    # - 2
 
   # test_split: # defines different splits
   #   distribution: categorical

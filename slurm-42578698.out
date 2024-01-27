@@ -1,0 +1,72 @@
+Loading rhel8/default-amp
+  Loading requirement: dot rhel8/slurm singularity/current rhel8/global
+    cuda/11.4 libpciaccess/0.16/gcc-9.4.0-6fonbj6
+    libiconv/1.16/gcc-9.4.0-ahebbov libxml2/2.9.12/gcc-9.4.0-gnknt5e
+    ncurses/6.2/gcc-9.4.0-aiirok7 hwloc/2.5.0/gcc-9.4.0-7sqomga
+    libevent/2.1.12/gcc-9.4.0-hgny7cm numactl/2.0.14/gcc-9.4.0-52dwc6n
+    cuda/11.4.0/gcc-9.4.0-3hnxhjt gdrcopy/2.2/gcc-9.4.0-e4igtfp
+    knem/1.1.4/gcc-9.4.0-bpbxgva libnl/3.3.0/gcc-9.4.0-whwhrwb
+    rdma-core/34.0/gcc-9.4.0-5eo5n2u ucx/1.11.1/gcc-9.4.0-lktqyl4
+    openmpi/4.1.1/gcc-9.4.0-epagguv
+Changed directory to /home/er647/projects/feature-wise-active-learning.
+
+JobID: 42578698
+======
+Time: Mon Jan 22 01:30:29 GMT 2024
+Running on master node: gpu-q-40
+Current directory: /home/er647/projects/feature-wise-active-learning
+
+Nodes allocated:
+================
+gpu-q-40
+
+numtasks=4, numnodes=1, mpi_tasks_per_node=4 (OMP_NUM_THREADS=1)
+
+Executing command:
+==================
+wandb agent evangeorgerex/fwal/put82sk9
+
+wandb: Starting wandb agent 🕵️
+2024-01-22 01:30:39,747 - wandb.wandb_agent - INFO - Running runs: []
+2024-01-22 01:30:40,108 - wandb.wandb_agent - INFO - Agent received command: run
+2024-01-22 01:30:40,109 - wandb.wandb_agent - INFO - Agent starting run with config:
+	dataset: simple_trig_synth
+	mask_type: sigmoid
+	repeat_id: 0
+	seed_model_init: 1
+	seed_model_mask: 0
+2024-01-22 01:30:40,115 - wandb.wandb_agent - INFO - About to run command: /usr/bin/env python /home/er647/projects/feature-wise-active-learning/src/run_experiment.py --model fwal --valid_percentage 0.25 --sparsity_type global --gamma 1 --sparsity_regularizer L1 --sparsity_regularizer_hyperparam 1 --test_time_interventions evaluate_test_time_interventions --tags ca003302 --notes "Evaluating random mask init. Gumbel and Softmax. All 5 datasets. x3 test splits x3 weight inits" --dataset=simple_trig_synth --mask_type=sigmoid --repeat_id=0 --seed_model_init=1 --seed_model_mask=0
+2024-01-22 01:30:45,128 - wandb.wandb_agent - INFO - Running runs: ['ny6ptpye']
+wandb: Currently logged in as: evangeorgerex. Use `wandb login --relogin` to force relogin
+wandb: WARNING Ignored wandb.init() arg project when running a sweep.
+wandb: WARNING Ignored wandb.init() arg entity when running a sweep.
+wandb: wandb version 0.16.2 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.16.1
+wandb: Run data is saved locally in ./wandb/run-20240122_013100-ny6ptpye
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Resuming run electric-sweep-6
+wandb: ⭐️ View project at https://wandb.ai/evangeorgerex/fwal
+wandb: 🧹 View sweep at https://wandb.ai/evangeorgerex/fwal/sweeps/put82sk9
+wandb: 🚀 View run at https://wandb.ai/evangeorgerex/fwal/runs/ny6ptpye
+wandb: WARNING Config item 'dataset' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'mask_type' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'repeat_id' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'seed_model_init' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'seed_model_mask' was locked by 'sweep' (ignored update).
+[rank: 0] Seed set to 1
+[rank: 0] Seed set to 42
+You have turned on `Trainer(detect_anomaly=True)`. This will significantly slow down compute speed and is recommended only for model debugging.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+[rank: 0] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/4
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 4 processes
+----------------------------------------------------------------------------------------------------
+
+You are using a CUDA device ('NVIDIA A100-SXM4-80GB') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+slurmstepd: error: *** JOB 42578698 ON gpu-q-40 CANCELLED AT 2024-01-23T01:30:42 DUE TO TIME LIMIT ***

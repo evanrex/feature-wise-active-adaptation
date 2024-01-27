@@ -1,0 +1,75 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: cf8dc428_vary_L1
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- fwal
+- --valid_percentage
+- 0.25
+- --sparsity_type
+- global
+- --gamma
+- 1.0
+- --sparsity_regularizer
+- L1
+- --sparsity_regularizer_hyperparam
+- 1
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hpc_run
+- --num_workers
+- 31 # optimal for HPC
+- --tags
+- cf8dc428 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "Varying L1 to extreme to confrim impelmentation correctness. Should observe mask values converge to 0 with high enough L1. Gumbel and Softmax. All 5 datasets. x3 weight inits"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - simple_trig_synth
+    - simple_linear_synth
+    - exponential_interaction_synth
+    - summed_squares_exponential_synth
+    - trigonometric_polynomial_synth
+
+  sparsity_regularizer_hyperparam:
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 1000
+    - 1000000
+    - 1000000000
+
+  mask_type:
+    distribution: categorical
+    values:
+    - sigmoid
+    - gumbel_softmax
+
+  seed_model_mask: 
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+

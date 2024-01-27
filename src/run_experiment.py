@@ -57,7 +57,9 @@ def create_wandb_logger(args):
 		log_model=args.wandb_log_model,
 		settings=wandb.Settings(start_method="thread")
 	)
-	wandb_logger.experiment.config.update(args)	  # add configuration file
+	trainer = pytorch_lightning.Trainer(logger=wandb_logger)
+	if trainer.global_rank == 0:
+		wandb_logger.experiment.config.update(args)	  # add configuration file
 
 	return wandb_logger
 
@@ -76,8 +78,9 @@ def run_experiment(args):
 
 	#### Intialize logging
 	wandb_logger = create_wandb_logger(args)
-
-	wandb.run.name = f"{get_run_name(args)}_{args.suffix_wand_run_name}_{wandb.run.id}"
+	trainer = pytorch_lightning.Trainer(logger=wandb_logger)
+	if trainer.global_rank == 0:
+		wandb.run.name = f"{get_run_name(args)}_{args.suffix_wand_run_name}_{wandb.run.id}"
 
 
 	#### Scikit-learn training
@@ -330,7 +333,7 @@ def train_model(args, model, data_module, wandb_logger=None):
 		# miscellaneous
 		accelerator="auto",
 		devices="auto",
-		detect_anomaly=True,
+		detect_anomaly= (not args.hpc_run),
 		overfit_batches=args.overfit_batches,
 		deterministic=args.deterministic,
 	)
@@ -562,7 +565,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--no_pin_memory', dest='pin_memory', action='store_false', help='dont pin memory for data loaders')
 	parser.set_defaults(pin_memory=True)
 
-
+	# Experiment set up
+	parser.add_argument('--hpc_run', action='store_true', dest='hpc_run',
+						help='True for when running on HPC')
+	
 	
 	####### Wandb logging
 	parser.add_argument('--group', type=str, help="Group runs in wand")
@@ -741,7 +747,9 @@ if __name__ == "__main__":
 			}
 
 			args.lgb_learning_rate, args.lgb_max_depth = params[args.dataset]
-		
+	
+	if args.hpc_run:
+		torch.set_float32_matmul_precision('high')
 
 	if args.disable_wandb:
 		os.environ['WANDB_MODE'] = 'disabled'

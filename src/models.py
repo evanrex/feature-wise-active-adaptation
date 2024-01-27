@@ -481,19 +481,19 @@ class TrainingLightningModule(pl.LightningModule):
 		return losses
 
 	def log_losses(self, losses, key, dataloader_name=""):
-		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item())
-		self.log(f"{key}/reconstruction_loss{dataloader_name}", losses['reconstruction'].item())
-		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item())
-		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item())
+		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/reconstruction_loss{dataloader_name}", losses['reconstruction'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item(), sync_dist=self.args.hpc_run)
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
-		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred))
-		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'))
-		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'))
-		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'))
+		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		if self.args.num_classes==2:
-			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'))
+			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
@@ -781,7 +781,7 @@ class FWAL(TrainingLightningModule):
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
-            sparsity_weights = torch.nn.functional.gumbel_softmax(self.mask, hard=True)
+            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), hard=True)[:,0]
         else:
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
             
@@ -798,6 +798,8 @@ class FWAL(TrainingLightningModule):
         reconstructed_x = self.reconstruction_module(masked_x)
         
         prediction = self.prediction_module(reconstructed_x)
+
+        reconstructed_x = (1-sparsity_weights)*reconstructed_x + masked_x  # only want loss for reconstructed x terms that were masked
         
         return prediction, reconstructed_x, sparsity_weights
     

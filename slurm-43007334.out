@@ -1,0 +1,78 @@
+Loading rhel8/default-amp
+  Loading requirement: dot rhel8/slurm singularity/current rhel8/global
+    cuda/11.4 libpciaccess/0.16/gcc-9.4.0-6fonbj6
+    libiconv/1.16/gcc-9.4.0-ahebbov libxml2/2.9.12/gcc-9.4.0-gnknt5e
+    ncurses/6.2/gcc-9.4.0-aiirok7 hwloc/2.5.0/gcc-9.4.0-7sqomga
+    libevent/2.1.12/gcc-9.4.0-hgny7cm numactl/2.0.14/gcc-9.4.0-52dwc6n
+    cuda/11.4.0/gcc-9.4.0-3hnxhjt gdrcopy/2.2/gcc-9.4.0-e4igtfp
+    knem/1.1.4/gcc-9.4.0-bpbxgva libnl/3.3.0/gcc-9.4.0-whwhrwb
+    rdma-core/34.0/gcc-9.4.0-5eo5n2u ucx/1.11.1/gcc-9.4.0-lktqyl4
+    openmpi/4.1.1/gcc-9.4.0-epagguv
+Changed directory to /home/er647/projects/feature-wise-active-learning.
+
+JobID: 43007334
+======
+Time: Fri Jan 26 02:59:52 GMT 2024
+Running on master node: gpu-q-29
+Current directory: /home/er647/projects/feature-wise-active-learning
+
+Nodes allocated:
+================
+gpu-q-29
+
+numtasks=4, numnodes=1, mpi_tasks_per_node=4 (OMP_NUM_THREADS=1)
+
+Executing command:
+==================
+wandb agent evangeorgerex/fwal/fgrkm5ul
+
+wandb: Starting wandb agent 🕵️
+2024-01-26 03:00:03,204 - wandb.wandb_agent - INFO - Running runs: []
+2024-01-26 03:00:03,490 - wandb.wandb_agent - INFO - Agent received command: run
+2024-01-26 03:00:04,515 - wandb.wandb_agent - INFO - Agent starting run with config:
+	dataset: simple_trig_synth
+	mask_type: gumbel_softmax
+	repeat_id: 0
+	seed_model_init: 0
+	seed_model_mask: 0
+2024-01-26 03:00:04,526 - wandb.wandb_agent - INFO - About to run command: /usr/bin/env python /home/er647/projects/feature-wise-active-learning/src/run_experiment.py --model fwal --valid_percentage 0.25 --sparsity_type global --gamma 1 --sparsity_regularizer L1 --sparsity_regularizer_hyperparam 1 --hpc_run --num_workers 31 --test_time_interventions evaluate_test_time_interventions --tags ca003302 --notes "Evaluating random mask init. Gumbel and Softmax. All 5 datasets. x3 test splits x3 weight inits" --dataset=simple_trig_synth --mask_type=gumbel_softmax --repeat_id=0 --seed_model_init=0 --seed_model_mask=0
+2024-01-26 03:00:09,538 - wandb.wandb_agent - INFO - Running runs: ['mioxsxii']
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+wandb: Currently logged in as: evangeorgerex. Use `wandb login --relogin` to force relogin
+wandb: WARNING Ignored wandb.init() arg project when running a sweep.
+wandb: WARNING Ignored wandb.init() arg entity when running a sweep.
+wandb: wandb version 0.16.2 is available!  To upgrade, please run:
+wandb:  $ pip install wandb --upgrade
+wandb: Tracking run with wandb version 0.16.1
+wandb: Run data is saved locally in ./wandb/run-20240126_030024-mioxsxii
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Resuming run helpful-sweep-1
+wandb: ⭐️ View project at https://wandb.ai/evangeorgerex/fwal
+wandb: 🧹 View sweep at https://wandb.ai/evangeorgerex/fwal/sweeps/fgrkm5ul
+wandb: 🚀 View run at https://wandb.ai/evangeorgerex/fwal/runs/mioxsxii
+wandb: WARNING Config item 'dataset' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'mask_type' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'repeat_id' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'seed_model_init' was locked by 'sweep' (ignored update).
+wandb: WARNING Config item 'seed_model_mask' was locked by 'sweep' (ignored update).
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+[rank: 0] Seed set to 0
+[rank: 0] Seed set to 42
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+IPU available: False, using: 0 IPUs
+HPU available: False, using: 0 HPUs
+[rank: 0] Seed set to 42
+Initializing distributed: GLOBAL_RANK: 0, MEMBER: 1/4
+----------------------------------------------------------------------------------------------------
+distributed_backend=nccl
+All distributed processes registered. Starting with 4 processes
+----------------------------------------------------------------------------------------------------
+
+slurmstepd: error: *** JOB 43007334 ON gpu-q-29 CANCELLED AT 2024-01-26T12:03:43 ***
