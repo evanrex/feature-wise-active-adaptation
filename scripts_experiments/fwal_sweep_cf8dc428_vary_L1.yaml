@@ -57,15 +57,6 @@ parameters:
     - sigmoid
     - gumbel_softmax
 
-  seed_model_mask: 
-    distribution: categorical
-    values:
-    - 0
-    - 1
-    - 2
-    - 3
-    - 4
-
   seed_model_init:  # number of folds
     distribution: categorical
     values:
