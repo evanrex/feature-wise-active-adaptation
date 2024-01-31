@@ -425,7 +425,7 @@ def parse_arguments(args=None):
 						choices=['L1', 'hoyer'])
 	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
-	parser.add_argument('--mask_type', type=str, default='sigmoid',
+	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
 						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
 
 
