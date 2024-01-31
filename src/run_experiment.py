@@ -379,6 +379,7 @@ def parse_arguments(args=None):
 						help='number of layers after which to output the hidden representation used as input to the decoder \
 							  (e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
 							  	then the hidden representation will be the representation after the two layers [100, 100])')
+	parser.add_argument('--as_MLP_baseline', action='store_true', dest='as_MLP_baseline', help='Set to true with --model=fwal if want to train FWAL model as a plain MLP ')
 
 
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')

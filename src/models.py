@@ -475,6 +475,11 @@ class TrainingLightningModule(pl.LightningModule):
 				losses['sparsity'] = self.args.sparsity_regularizer_hyperparam * hoyer_reg
 			else:
 				raise Exception("Sparsity regularizer not valid")
+		
+		if self.args.as_MLP_baseline:
+			losses['sparsity'] = torch.tensor(0., device=self.device)
+			losses['reconstruction'] = torch.tensor(0., device=self.device)
+			
 
 		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity']
 		
@@ -778,6 +783,9 @@ class FWAL(TrainingLightningModule):
     
     def mask_module(self, x):
         # constructing sparsity weights from mask module
+        if self.args.as_MLP_baseline:
+            return x, None
+        
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
@@ -799,7 +807,7 @@ class FWAL(TrainingLightningModule):
         
         prediction = self.prediction_module(reconstructed_x)
 
-        reconstructed_x = (1-sparsity_weights)*reconstructed_x + masked_x  # only want loss for reconstructed x terms that were masked
+        reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
         
         return prediction, reconstructed_x, sparsity_weights
     
@@ -848,5 +856,3 @@ class FWAL(TrainingLightningModule):
         prediction = torch.softmax(prediction, dim=1)
         
         return prediction
-
-
