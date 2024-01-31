@@ -8,8 +8,8 @@ This was tested to work on: CUDA Version: 11.2 (NVIDIA-SMI 460.32.03).
 ```
 <!-- Install the codebase -->
 cd REPOSITORY
-conda create python=3.7.9 --name low-data
-conda activate low-data
+conda create python=3.10.12 --name fwal
+conda activate fwal
 pip install -r requirements.txt
 
 <!-- Optionally, install lightgbm -->
