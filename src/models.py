@@ -531,7 +531,7 @@ class TrainingLightningModule(pl.LightningModule):
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
@@ -576,7 +576,7 @@ class TrainingLightningModule(pl.LightningModule):
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		output =  {
@@ -728,7 +728,7 @@ class DNN(TrainingLightningModule):
 		self.classification_layer = nn.Linear(args.feature_extractor_dims[-1], args.num_classes)
 		self.decoder = decoder
 
-	def forward(self, x):
+	def forward(self, x, test_time=None):
 		x, sparsity_weights = self.first_layer(x)			   # pass through first layer
 
 		x = self.encoder_first_layers(x)					   # pass throught the first part of the following layers
@@ -784,8 +784,7 @@ class FWAL(TrainingLightningModule):
     def mask_module(self, x):
         # constructing sparsity weights from mask module
         if self.args.as_MLP_baseline:
-            return x, None
-        
+            return x, torch.ones_like(x)
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
@@ -796,13 +795,16 @@ class FWAL(TrainingLightningModule):
         return x * sparsity_weights, sparsity_weights
         
 
-    def forward(self, x):
+    def forward(self, x, test_time=False):
         """
         Forward pass for training
         """
-        
-        masked_x, sparsity_weights = self.mask_module(x)
-        
+        if test_time:
+            sparsity_weights = self.necessary_features()
+            masked_x = x * sparsity_weights
+        else:
+            masked_x, sparsity_weights = self.mask_module(x)
+		
         reconstructed_x = self.reconstruction_module(masked_x)
         
         prediction = self.prediction_module(reconstructed_x)
@@ -816,6 +818,10 @@ class FWAL(TrainingLightningModule):
         k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
         Returns a boolean mask for which features are deemed necessary and which are not.
         """
+        
+        if self.args.as_MLP_baseline:
+            return torch.ones_like(self.mask)
+        
         if k == None:
             k = self.args.num_necessary_features
         if self.args.mask_type == "sigmoid":
