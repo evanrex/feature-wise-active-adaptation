@@ -746,6 +746,13 @@ class FWAL(TrainingLightningModule):
         self.log_test_key = None
         self.learning_rate = args.lr
         
+        self.temp_start = 10
+        self.temp_end = 0.01
+        # the iteration is used in annealing the temperature
+        # 	it's increased with every call to sample during training
+        self.current_iteration = 0 
+        self.anneal_iterations = args.concrete_anneal_iterations 
+
         if self.args.mask_init_value is None:
             mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
             self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
@@ -789,12 +796,23 @@ class FWAL(TrainingLightningModule):
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
-            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), hard=True)[:,0]
+			
+            if self.training:
+                self.current_iteration += 1
+            temperature = self.get_temperature()
+            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=True)[:,0]
         else:
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
             
         return x * sparsity_weights, sparsity_weights
-        
+	
+    def get_temperature(self):
+		# compute temperature		
+        if self.current_iteration >= self.anneal_iterations:
+            return self.temp_end
+        else:
+            return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
+ 
 
     def forward(self, x):
         """
