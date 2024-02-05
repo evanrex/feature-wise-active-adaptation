@@ -510,9 +510,11 @@ class TrainingLightningModule(pl.LightningModule):
 		self.log_losses(losses, key='train')
 		# self.log("train/lr", self.learning_rate)
 		
-		# log temperature of the concrete distribution
+		# log temperature of the concrete distribution 	
 		if isinstance(self.first_layer, ConcreteLayer):
 			self.log("train/concrete_temperature", self.first_layer.get_temperature())
+		else:
+			self.log("train/gumbel_temperature", self.get_temperature())
 		outputs = {
 			'loss': losses['total'],
 			'losses': detach_tensors(losses),
@@ -531,7 +533,7 @@ class TrainingLightningModule(pl.LightningModule):
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
@@ -576,7 +578,7 @@ class TrainingLightningModule(pl.LightningModule):
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		output =  {
@@ -728,7 +730,7 @@ class DNN(TrainingLightningModule):
 		self.classification_layer = nn.Linear(args.feature_extractor_dims[-1], args.num_classes)
 		self.decoder = decoder
 
-	def forward(self, x):
+	def forward(self, x, test_time=None):
 		x, sparsity_weights = self.first_layer(x)			   # pass through first layer
 
 		x = self.encoder_first_layers(x)					   # pass throught the first part of the following layers
@@ -791,12 +793,10 @@ class FWAL(TrainingLightningModule):
     def mask_module(self, x):
         # constructing sparsity weights from mask module
         if self.args.as_MLP_baseline:
-            return x, None
-        
+            return x, torch.ones_like(x)
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
-			
             if self.training:
                 self.current_iteration += 1
             temperature = self.get_temperature()
@@ -812,12 +812,16 @@ class FWAL(TrainingLightningModule):
             return self.temp_end
         else:
             return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
- 
 
-    def forward(self, x):
+    def forward(self, x, test_time=False):
         """
         Forward pass for training
         """
+        if test_time:
+            sparsity_weights = self.necessary_features().float()
+            masked_x = x * sparsity_weights
+        else:
+            masked_x, sparsity_weights = self.mask_module(x)
         
         masked_x, sparsity_weights = self.mask_module(x)
         
@@ -846,7 +850,7 @@ class FWAL(TrainingLightningModule):
             return self.mask > 0
         else:
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-        
+    
     def inference(self, x):
         """
         Performs inference with test-time interventions
