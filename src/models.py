@@ -17,7 +17,6 @@ from torch import nn
 from lookahead_optimizer import Lookahead
 from sparsity import LearnableSparsityVector, SparsityNetwork
 
-
 def get_labels_lists(outputs):
 	all_y_true, all_y_pred = [], []
 	for output in outputs:
@@ -74,13 +73,17 @@ General components of a model
 
 WeightPredictorNetwork(optional) -> FeatureExtractor -> Decoder (optional) -> DNN/DKL
 """
-def create_model(args, data_module=None):
+def create_model(args, data_module):
 	"""
 	Function to create the model. Firstly creates the components (e.g., FeatureExtractor, Decoder) and then assambles them.
 
 	Returns a model instance.
 	"""
 	pl.seed_everything(args.seed_model_init, workers=True)
+ 
+	if args.model == 'fwal':
+		model = FWAL(args)
+		return model
 	
 	### create embedding matrices
 	wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
@@ -110,7 +113,7 @@ def create_model(args, data_module=None):
 	elif args.model in ['dnn', 'dietdnn']:
 		if args.model=='dnn':
 			is_diet_layer = False
-		elif args.model=='dietdnn':
+		else: # args.model=='dietdnn':
 			is_diet_layer = True
 		
 		first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
@@ -450,7 +453,11 @@ class TrainingLightningModule(pl.LightningModule):
 	"""
 	def __init__(self, args):
 		super().__init__()
+		self.training_step_outputs = []
+		self.validation_step_outputs = []
+		self.test_step_outputs = []
 		self.args = args
+		self.learning_rate = args.lr
 
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
@@ -468,25 +475,30 @@ class TrainingLightningModule(pl.LightningModule):
 				losses['sparsity'] = self.args.sparsity_regularizer_hyperparam * hoyer_reg
 			else:
 				raise Exception("Sparsity regularizer not valid")
+		
+		if self.args.as_MLP_baseline:
+			losses['sparsity'] = torch.tensor(0., device=self.device)
+			losses['reconstruction'] = torch.tensor(0., device=self.device)
+			
 
 		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity']
 		
 		return losses
 
 	def log_losses(self, losses, key, dataloader_name=""):
-		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item())
-		self.log(f"{key}/reconstruction_loss{dataloader_name}", losses['reconstruction'].item())
-		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item())
-		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item())
+		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/reconstruction_loss{dataloader_name}", losses['reconstruction'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item(), sync_dist=self.args.hpc_run)
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
-		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred))
-		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'))
-		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'))
-		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'))
+		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
+		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		if self.args.num_classes==2:
-			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'))
+			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
@@ -501,33 +513,40 @@ class TrainingLightningModule(pl.LightningModule):
 		# log temperature of the concrete distribution
 		if isinstance(self.first_layer, ConcreteLayer):
 			self.log("train/concrete_temperature", self.first_layer.get_temperature())
-
-		return {
+		outputs = {
 			'loss': losses['total'],
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1)
 		}
+		self.training_step_outputs.append(outputs)
+		return outputs
 
-	def training_epoch_end(self, outputs):
-		self.log_epoch_metrics(outputs, 'train')
+	def on_train_epoch_end(self):
+		self.log_epoch_metrics(self.training_step_outputs, 'train')
+		self.training_step_outputs.clear()  # free memory
 
 	def validation_step(self, batch, batch_idx, dataloader_idx=0):
 		"""
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
-		return {
+		output = {
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1)
 		}
+		while len(self.validation_step_outputs) <= dataloader_idx:
+			self.validation_step_outputs.append([])
+   
+		self.validation_step_outputs[dataloader_idx].append(output)
+		return output
 
-	def validation_epoch_end(self, outputs_all_dataloaders):
+	def on_validation_epoch_end(self):
 		"""
 		- outputs: when no_dataloaders==1 --> A list of dictionaries corresponding to a validation step.
 				   when no_dataloaders>1  --> List with length equal to the number of validation dataloaders. Each element is a list with the dictionaries corresponding to a validation step.
@@ -536,8 +555,7 @@ class TrainingLightningModule(pl.LightningModule):
 		# `outputs_all_dataloaders` is expected to a list of dataloaders.
 		# However, when there's only one dataloader, outputs_all_dataloaders is NOT a list.
 		# Thus, we transform it in a list to preserve compatibility
-		if len(self.args.val_dataloaders_name)==1:
-			outputs_all_dataloaders = [outputs_all_dataloaders]
+		outputs_all_dataloaders = self.validation_step_outputs
 
 		for dataloader_id, outputs in enumerate(outputs_all_dataloaders):
 			losses = {
@@ -553,21 +571,32 @@ class TrainingLightningModule(pl.LightningModule):
 
 			self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
 			self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
-
+		self.validation_step_outputs.clear()
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
+		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x)
+		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
-		return {
+		output =  {
 			'losses': detach_tensors(losses),
 			'y_true': y_true,
 			'y_pred': torch.argmax(y_hat, dim=1),
 			'y_hat': y_hat.detach().cpu().numpy()
 		}
+		while len(self.test_step_outputs) <= dataloader_idx:
+			self.test_step_outputs.append([])
+   
+		self.test_step_outputs[dataloader_idx].append(output)
+  
+		return output
 
-	def test_epoch_end(self, outputs):
+	def on_test_epoch_end(self):
+		'''accommodates multiple dataloaders but only uses first'''
+
+		outputs = self.test_step_outputs[0]
+
 		### Save losses
 		losses = {
 			'total': np.mean([output['losses']['total'].item() for output in outputs]),
@@ -588,13 +617,16 @@ class TrainingLightningModule(pl.LightningModule):
 
 
 		### Save global feature importances
-		if self.args.sparsity_type == 'global':
-			feature_importance = self.feature_extractor.sparsity_model.forward(None).cpu().detach().numpy()
+		# if self.args.sparsity_type == 'global':
+		# 	feature_importance = self.feature_extractor.sparsity_model.forward(None).cpu().detach().numpy()
 			
-			global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
-			wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
+		# 	global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
+		# 	wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
 
-
+	def on_train_end(self):
+		'''logs mask parameters to wandb'''
+		wandb.log({"best_mask_parameters": self.mask.data})
+  
 	def configure_optimizers(self):
 		params = self.parameters()
 
@@ -696,7 +728,7 @@ class DNN(TrainingLightningModule):
 		self.classification_layer = nn.Linear(args.feature_extractor_dims[-1], args.num_classes)
 		self.decoder = decoder
 
-	def forward(self, x):
+	def forward(self, x, test_time=None):
 		x, sparsity_weights = self.first_layer(x)			   # pass through first layer
 
 		x = self.encoder_first_layers(x)					   # pass throught the first part of the following layers
@@ -706,3 +738,127 @@ class DNN(TrainingLightningModule):
 		y_hat = self.classification_layer(x)           		   # classification, returns logits
 		
 		return y_hat, x_hat, sparsity_weights
+
+class FWAL(TrainingLightningModule):
+    def __init__(self, args):
+        super().__init__(args)
+        self.args = args
+        self.log_test_key = None
+        self.learning_rate = args.lr
+        
+        if self.args.mask_init_value is None:
+            mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+            self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+        else:
+            self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)
+        
+        self.decoder=True
+        self.first_layer = None
+        
+		# Reconstruction Module: 5 layers with 50 neurons each
+        self.reconstruction_module = nn.Sequential(
+            nn.Linear(args.num_features, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, args.num_features)  # Last layer outputs num_features
+        )
+
+        # Prediction Module: 5 layers with 50 neurons each
+        self.prediction_module = nn.Sequential(
+            nn.Linear(args.num_features, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
+        )
+    
+    def mask_module(self, x):
+        # constructing sparsity weights from mask module
+        if self.args.as_MLP_baseline:
+            return x, torch.ones_like(x)
+        if self.args.mask_type == "sigmoid":
+            sparsity_weights = torch.sigmoid(self.mask)
+        elif self.args.mask_type == "gumbel_softmax":
+            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), hard=True)[:,0]
+        else:
+            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+            
+        return x * sparsity_weights, sparsity_weights
+        
+
+    def forward(self, x, test_time=False):
+        """
+        Forward pass for training
+        """
+        if test_time:
+            sparsity_weights = self.necessary_features()
+            masked_x = x * sparsity_weights
+        else:
+            masked_x, sparsity_weights = self.mask_module(x)
+		
+        reconstructed_x = self.reconstruction_module(masked_x)
+        
+        prediction = self.prediction_module(reconstructed_x)
+
+        reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
+        
+        return prediction, reconstructed_x, sparsity_weights
+    
+    def necessary_features(self, k=None):
+        """
+        k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
+        Returns a boolean mask for which features are deemed necessary and which are not.
+        """
+        
+        if self.args.as_MLP_baseline:
+            return torch.ones_like(self.mask)
+        
+        if k == None:
+            k = self.args.num_necessary_features
+        if self.args.mask_type == "sigmoid":
+            sigmoid_mask = torch.sigmoid(self.mask)
+            _, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
+            boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
+            boolean_mask[indices] = True  # Set the top k indices to True
+            return boolean_mask
+        elif self.args.mask_type =="gumbel_softmax":
+            return self.mask > 0
+        else:
+            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+        
+    def inference(self, x):
+        """
+        Performs inference with test-time interventions
+        """
+        x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
+    
+        # Step 1: Replace None (or equivalent) values with 0
+        # Assuming x is a tensor and None values are represented as NaNs
+        original_x = x.clone()  # Keep a copy of the original x for later
+        x = torch.nan_to_num(x, nan=0.0)
+        
+        masked_x, sparsity_weights = self.mask_module(x)
+        
+        # Step 2: Reconstruction as in the original forward pass
+        reconstructed_x = self.reconstruction_module(masked_x)
+        
+        # Step 3: Replace reconstructed values with original non-None values
+        # Assuming None values were NaN and were replaced with 0 in original_x
+        mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
+        reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
+        
+        # Return the reconstructed_x and prediction
+        prediction = self.prediction_module(reconstructed_x)
+        
+        prediction = torch.softmax(prediction, dim=1)
+        
+        return prediction

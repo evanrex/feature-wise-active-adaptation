@@ -1,4 +1,4 @@
-program: /home/am2770/Github/cancer-low-data/src/run_experiment.py # Path to the program to run
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
 project: low-data            # Project name
 
 name: ablation_remove_wpn

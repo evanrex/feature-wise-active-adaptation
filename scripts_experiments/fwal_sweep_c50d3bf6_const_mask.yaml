@@ -1,0 +1,77 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: const_mask_init_gumbel
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- fwal
+- --valid_percentage
+- 0.25
+- --sparsity_type
+- global
+- --gamma
+- 1.0
+- --sparsity_regularizer
+- L1
+- --sparsity_regularizer_hyperparam
+- 1
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hpc_run
+- --num_workers
+- 31 # optimal for HPC
+- --tags
+- c50d3bf6 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "Comparing different constant mask initialisations. Gumbel and Softmax. All 5 datasets. x3 test splits x3 weight inits"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - simple_trig_synth
+    - simple_linear_synth
+    - exponential_interaction_synth
+    - summed_squares_exponential_synth
+    - trigonometric_polynomial_synth
+
+  mask_type:
+    distribution: categorical
+    values:
+    # - sigmoid
+    - gumbel_softmax
+
+  mask_init_value:
+    distribution: categorical
+    values:
+    - -1
+    - 0
+    - 1
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+
+  repeat_id:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    # - 1
+    # - 2
+
+  # test_split: # defines different splits
+  #   distribution: categorical
+  #   values: 
+  #   - 0
+  #   - 1
+  #   - 2

@@ -21,7 +21,6 @@ from torch.optim.lr_scheduler import MultiStepLR
 import torch.nn.functional as F
 import torchvision.datasets as dset
 from torch.utils.data import Dataset, DataLoader
-import gpytorch
 import pytorch_lightning as pl
 from pytorch_lightning import loggers as pl_loggers
 

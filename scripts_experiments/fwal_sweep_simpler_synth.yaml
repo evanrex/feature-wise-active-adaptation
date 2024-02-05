@@ -1,0 +1,58 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: mask_implementation_sigmoid_v_probabilistic
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- fwal
+- --valid_percentage
+- 0.25
+- --sparsity_type
+- global
+- --gamma
+- 1.0
+- --sparsity_regularizer
+- L1
+- --tags
+- 264b29f6 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "Comparing mask impelmentations: Probabilistic vs Sigmoid. Goal is to learn a mask. Varying sparsity coefficient as well as datasets too."
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - very_simple_synth
+
+  sparsity_regularizer_hyperparam:
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 1000
+
+    
+  mask_type:
+    distribution: categorical
+    values:
+    - sigmoid
+    - probabilistic
+
+  repeat_id:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+
+  test_split: # defines different splits
+    distribution: categorical
+    values: 
+    - 0

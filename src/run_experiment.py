@@ -25,6 +25,9 @@ import logging
 from dataset import *
 from models import *
 from _config import DATA_DIR
+from evaluation_utils import *
+
+import glob
 
 def get_run_name(args):
 	if args.model=='dnn':
@@ -48,12 +51,15 @@ def create_wandb_logger(args):
 		job_type=args.job_type,
 		tags=args.tags,
 		notes=args.notes,
+		entity=WANDB_ENTITY,
 		# reinit=True,
 
 		log_model=args.wandb_log_model,
 		settings=wandb.Settings(start_method="thread")
 	)
-	wandb_logger.experiment.config.update(args)	  # add configuration file
+	trainer = pytorch_lightning.Trainer(logger=wandb_logger)
+	if trainer.global_rank == 0:
+		wandb_logger.experiment.config.update(args)	  # add configuration file
 
 	return wandb_logger
 
@@ -72,8 +78,9 @@ def run_experiment(args):
 
 	#### Intialize logging
 	wandb_logger = create_wandb_logger(args)
-
-	wandb.run.name = f"{get_run_name(args)}_{args.suffix_wand_run_name}_{wandb.run.id}"
+	trainer = pytorch_lightning.Trainer(logger=wandb_logger)
+	if trainer.global_rank == 0:
+		wandb.run.name = f"{get_run_name(args)}_{args.suffix_wand_run_name}_{wandb.run.id}"
 
 
 	#### Scikit-learn training
@@ -214,28 +221,53 @@ def run_experiment(args):
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
-		#### Create model
-		model = create_model(args, data_module)
+		if args.only_test_time_intervention_eval:
+			if not args.trained_FWAL_model_run_name:
+				raise Exception('--trained_FWAL_model_run_name must be passed if --only_test_time_intervention_eval is passed. ')
+			ckpt_path = os.path.join('fwal',args.trained_FWAL_model_run_name, 'checkpoints')
+			if not os.path.exists(ckpt_path):
+				raise FileNotFoundError(f"Directory not found at {ckpt_path}")
 
-		trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
-
-		if args.train_on_full_data:
-			checkpoint_path = checkpoint_callback.last_model_path
+			checkpoint_files = glob.glob(os.path.join(ckpt_path, '*.ckpt'))
+			if not checkpoint_files:
+				raise FileNotFoundError(f"No .ckpt files found in {ckpt_path}")
+			checkpoint_path = checkpoint_files[0]
+			checkpoint_files = [file for file in checkpoint_files if not file.endswith('last.ckpt')]
+			if checkpoint_files:
+				checkpoint_path = checkpoint_files[0] 
+			trained_model = FWAL.load_from_checkpoint(checkpoint_path, args=args)
+			if args.test_time_interventions == "evaluate_test_time_interventions":
+				evaluate_test_time_interventions(trained_model, data_module, args, wandb_logger)
+			elif args.test_time_interventions == "assist_test_time_interventions":
+				assist_test_time_interventions(trained_model, data_module, args, wandb_logger)
 		else:
-			checkpoint_path = checkpoint_callback.best_model_path
+			#### Create model
+			model = create_model(args, data_module)
 
-			print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
-			wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
+			trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
 
-		#### Compute metrics for the best model
-		model.log_test_key = 'bestmodel_train'
-		trainer.test(model, dataloaders=data_module.train_dataloader(), ckpt_path=checkpoint_path)
+			if args.test_time_interventions == "evaluate_test_time_interventions":
+				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
+			elif args.test_time_interventions == "assist_test_time_interventions":
+				assist_test_time_interventions(model, data_module, args, wandb_logger)
 
-		model.log_test_key = 'bestmodel_valid'
-		trainer.test(model, dataloaders=data_module.val_dataloader()[0], ckpt_path=checkpoint_path)
+			if args.train_on_full_data:
+				checkpoint_path = checkpoint_callback.last_model_path
+			else:
+				checkpoint_path = checkpoint_callback.best_model_path
 
-		model.log_test_key = 'bestmodel_test'
-		trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
+				print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
+				wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
+
+			#### Compute metrics for the best model
+			model.log_test_key = 'bestmodel_train'
+			trainer.test(model, dataloaders=data_module.train_dataloader(), ckpt_path=checkpoint_path)
+
+			model.log_test_key = 'bestmodel_valid'
+			trainer.test(model, dataloaders=data_module.val_dataloader()[0], ckpt_path=checkpoint_path)
+
+			model.log_test_key = 'bestmodel_test'
+			trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
 
 	
 	wandb.finish()
@@ -301,7 +333,7 @@ def train_model(args, model, data_module, wandb_logger=None):
 		# miscellaneous
 		accelerator="auto",
 		devices="auto",
-		detect_anomaly=True,
+		detect_anomaly= (not args.hpc_run),
 		overfit_batches=args.overfit_batches,
 		deterministic=args.deterministic,
 	)
@@ -339,7 +371,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet'], default='dnn')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='dnn')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
 						help='layer size for the feature extractor. If using a virtual layer,\
 							  the first dimension must match it.')
@@ -347,6 +379,7 @@ def parse_arguments(args=None):
 						help='number of layers after which to output the hidden representation used as input to the decoder \
 							  (e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
 							  	then the hidden representation will be the representation after the two layers [100, 100])')
+	parser.add_argument('--as_MLP_baseline', action='store_true', dest='as_MLP_baseline', help='Set to true with --model=fwal if want to train FWAL model as a plain MLP ')
 
 
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
@@ -392,6 +425,8 @@ def parse_arguments(args=None):
 						choices=['L1', 'hoyer'])
 	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
+	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
+						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
 
 
 	####### DKL
@@ -400,7 +435,7 @@ def parse_arguments(args=None):
 
 
 	####### Weight predictor network
-	parser.add_argument('--wpn_embedding_type', type=str, default='nmf',
+	parser.add_argument('--wpn_embedding_type', type=str, default='histogram',
 						choices=['histogram', 'all_patients', 'nmf', 'svd'],
 						help='histogram = histogram x means (like FsNet)\
 							  all_patients = randomly pick patients and use their gene expressions as the embedding\
@@ -486,7 +521,14 @@ def parse_arguments(args=None):
 	parser.add_argument('--custom_train_size', type=int, default=None)
 	parser.add_argument('--custom_valid_size', type=int, default=None)
 	parser.add_argument('--custom_test_size', type=int, default=None)
-
+	
+	####### Test Time interventions
+	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
+	
+	####### Custom evaluation
+	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
+	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
+	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')
@@ -512,6 +554,8 @@ def parse_arguments(args=None):
 
 	# SEEDS
 	parser.add_argument('--seed_model_init', type=int, default=42, help='Seed for initializing the model (to have the same weights)')
+	parser.add_argument('--seed_model_mask', type=int, default=42, help='Seed for initializing the model mask (to have the same weights)')
+	parser.add_argument('--mask_init_value', type=int, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation.')
 	parser.add_argument('--seed_training', type=int, default=42, help='Seed for training (e.g., batch ordering)')
 
 	parser.add_argument('--seed_kfold', type=int, help='Seed used for doing the kfold in train/test split')
@@ -522,7 +566,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--no_pin_memory', dest='pin_memory', action='store_false', help='dont pin memory for data loaders')
 	parser.set_defaults(pin_memory=True)
 
-
+	# Experiment set up
+	parser.add_argument('--hpc_run', action='store_true', dest='hpc_run',
+						help='True for when running on HPC')
+	
 	
 	####### Wandb logging
 	parser.add_argument('--group', type=str, help="Group runs in wand")
@@ -536,20 +583,23 @@ def parse_arguments(args=None):
 	parser.add_argument('--disable_wandb', action='store_true', dest='disable_wandb',
 						help='True if you dont want to crete wandb logs.')
 	parser.set_defaults(disable_wandb=False)
-	
 
+	args = parser.parse_args(args)
 
-	return parser.parse_args(args)
+	if args.seed_model_mask is None:
+		args.seed_model_mask = args.seed_model_init
+
+	return args
 
 
 if __name__ == "__main__":
 	warnings.filterwarnings("ignore", category=sklearn.exceptions.UndefinedMetricWarning)
-	warnings.filterwarnings("ignore", category=pytorch_lightning.utilities.warnings.LightningDeprecationWarning)
+	# warnings.filterwarnings("ignore", category=pytorch_lightning.utilities.warnings.LightningDeprecationWarning)
 
 	print("Starting...")
 
 	logging.basicConfig(
-		filename='/home/am2770/Github/cancer-low-data/logs_exceptions.txt',
+		filename='/home/er647/projects/feature-wise-active-learning/logs_exceptions.txt',
 		filemode='a',
 		format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
 		datefmt='%H:%M:%S',
@@ -599,7 +649,7 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
@@ -698,7 +748,9 @@ if __name__ == "__main__":
 			}
 
 			args.lgb_learning_rate, args.lgb_max_depth = params[args.dataset]
-		
+	
+	if args.hpc_run:
+		torch.set_float32_matmul_precision('high')
 
 	if args.disable_wandb:
 		os.environ['WANDB_MODE'] = 'disabled'

@@ -228,7 +228,7 @@ def plot_svd_spectrum_embedding_range(S, gene_embedding, emb_sizes, suptitle, fi
 	# fig.autoscale()
 
 	if file_name:
-		fig.savefig(f"/home/am2770/Github/cancer-low-data/plots/{file_name}", bbox_inches='tight')
+		fig.savefig(f"/home/er647/projects/feature-wise-active-learning/plots/{file_name}", bbox_inches='tight')
 
 	fig.show()
 
