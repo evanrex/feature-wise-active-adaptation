@@ -489,10 +489,14 @@ class TrainingLightningModule(pl.LightningModule):
 	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
 		losses = {}
 		losses['pre_reconstruction'] = F.mse_loss(x_pred, x_true, reduction='mean')
-		losses['pre_mask_pred'] = F.cross_entropy(input=mask_pred, target=mask_true)
-		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_mask_pred']
+		losses['pre_cross_entropy'] = F.cross_entropy(input=mask_pred, target=mask_true)
+		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_cross_entropy']
 		return losses
 
+	def log_pre_losses(self, losses, key, dataloader_name=""):
+		self.log(f"{key}/total_pre_loss{dataloader_name}", losses['pre_total'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/pre_reconstruction_loss{dataloader_name}", losses['pre_reconstruction'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/pre_cross_entropy_loss{dataloader_name}", losses['pre_cross_entropy'].item(), sync_dist=self.args.hpc_run)
 
 	def log_losses(self, losses, key, dataloader_name=""):
 		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
@@ -500,7 +504,7 @@ class TrainingLightningModule(pl.LightningModule):
 		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item(), sync_dist=self.args.hpc_run)
 		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item(), sync_dist=self.args.hpc_run)
 
-	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
+	def log_epoch_metrics(self, outputs, key, dataloader_name=""): # TODO make a log_pre_epoch_metrics
 		y_true, y_pred = get_labels_lists(outputs)
 		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
@@ -516,7 +520,7 @@ class TrainingLightningModule(pl.LightningModule):
 
 		losses = self.pre_loss(x, x_pred, mask, mask_pred)
 
-		self.log_losses(losses, key='pre_train')
+		self.log_pre_losses(losses, key='pre_train')
 
 		
 		outputs = {
@@ -527,11 +531,11 @@ class TrainingLightningModule(pl.LightningModule):
 		}
 		self.training_step_outputs.append(outputs)
 		return outputs
-
+	
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
 
-		if self.global_step < self.args.num_pretrain_steps:
+		if self.current_epoch < self.args.pretrain_epochs:
 			return self.pre_training_step(batch, batch_idx)
 	
 		y_hat, x_hat, sparsity_weights = self.forward(x)
@@ -554,14 +558,44 @@ class TrainingLightningModule(pl.LightningModule):
 		return outputs
 
 	def on_train_epoch_end(self):
-		self.log_epoch_metrics(self.training_step_outputs, 'train')
+		if self.current_epoch < self.args.pretrain_epochs:
+			self.log_epoch_metrics(self.training_step_outputs, 'pre_train')
+		else:
+			self.log_epoch_metrics(self.training_step_outputs, 'train')
 		self.training_step_outputs.clear()  # free memory
+
+	def pre_validation_step(self, batch, batch_idx, dataloader_idx=0):
+		x, y_true = reshape_batch(batch)
+
+		x_pred, mask, mask_pred = self.pre_forward(x)
+
+		losses = self.pre_loss(x, x_pred, mask, mask_pred)
+
+		self.log_pre_losses(losses, key='pre_valid')
+		
+		output = {
+			'losses': detach_tensors(losses),
+			'y_true': mask,
+			'y_pred': mask_pred
+		}
+		
+		while len(self.validation_step_outputs) <= dataloader_idx:
+			self.validation_step_outputs.append([])
+   
+		self.validation_step_outputs[dataloader_idx].append(output)
+		return output
 
 	def validation_step(self, batch, batch_idx, dataloader_idx=0):
 		"""
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
+
+		if self.current_epoch < self.args.pretrain_epochs:
+			return self.pre_validation_step(batch, batch_idx, dataloader_idx)
+		
 		x, y_true = reshape_batch(batch)
+
+
 		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
@@ -589,19 +623,37 @@ class TrainingLightningModule(pl.LightningModule):
 		outputs_all_dataloaders = self.validation_step_outputs
 
 		for dataloader_id, outputs in enumerate(outputs_all_dataloaders):
-			losses = {
-				'total': np.mean([output['losses']['total'].item() for output in outputs]),
-				'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
-				'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
-				'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
-			}
-			if dataloader_id==0: # original validation dataset
-				dataloader_name=""
-			else:
-				dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
+			
+			if self.current_epoch < self.args.pretrain_epochs:
+				
+				losses = {
+					'total': np.mean([output['losses']['total'].item() for output in outputs]),
+					'pre_reconstruction': np.mean([output['losses']['pre_reconstruction'].item() for output in outputs]),
+					'pre_cross_entropy': np.mean([output['losses']['pre_cross_entropy'].item() for output in outputs]),
+				}
+				if dataloader_id==0: # original validation dataset
+					dataloader_name=""
+				else:
+					dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
 
-			self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
-			self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
+				self.log_pre_losses(losses, key='pre_valid', dataloader_name=dataloader_name)
+				self.log_epoch_metrics(outputs, key='pre_valid', dataloader_name=dataloader_name)
+			else:
+
+				losses = {
+					'total': np.mean([output['losses']['total'].item() for output in outputs]),
+					'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
+					'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
+					'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
+				}
+				if dataloader_id==0: # original validation dataset
+					dataloader_name=""
+				else:
+					dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
+
+				self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
+				self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
+
 		self.validation_step_outputs.clear()
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
@@ -859,7 +911,7 @@ class FWAL(TrainingLightningModule):
         Forward pass for training
         """
         if test_time:
-            sparsity_weights = self.necessary_features()
+            sparsity_weights = self.necessary_features().float()
             masked_x = x * sparsity_weights
         else:
             masked_x, sparsity_weights = self.mask_module(x)
@@ -921,3 +973,4 @@ class FWAL(TrainingLightningModule):
         prediction = torch.softmax(prediction, dim=1)
         
         return prediction
+	

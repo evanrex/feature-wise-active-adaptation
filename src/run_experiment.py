@@ -217,7 +217,9 @@ def run_experiment(args):
 		if args.max_steps!=-1:
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
-			args.max_epochs = int(np.ceil((args.max_steps+args.num_pretrain_steps) / steps_per_epoch))
+			args.pretrain_epochs = int(np.ceil((args.num_pretrain_steps) / steps_per_epoch))
+			args.max_epochs = int(np.ceil((args.max_steps) / steps_per_epoch)) + args.pretrain_epochs
+			args.max_steps += args.pretrain_epochs * steps_per_epoch
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
