@@ -217,7 +217,7 @@ def run_experiment(args):
 		if args.max_steps!=-1:
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
-			args.max_epochs = int(np.ceil(args.max_steps / steps_per_epoch))
+			args.max_epochs = int(np.ceil((args.max_steps+args.num_pretrain_steps) / steps_per_epoch))
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
@@ -471,6 +471,13 @@ def parse_arguments(args=None):
 						choices=['raw', 'standard', 'minmax'],
 						help='Preprocessing applied on each ROW of the D x N matrix, where a row contains all patient expressions for one gene.')
 
+	####### Self-supervised pre-training
+	parser.add_argument('--num_pretrain_steps', type=int, default=0,
+		help='number of steps to pre-train the model with the SEFS self-supervision task')
+	parser.add_argument('--pre_alpha', type=float, default=1,
+		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
+	parser.add_argument('--pre_pi', type=float, default=0.5,
+		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
 	
 	####### Training on the entire train + validation data
 	parser.add_argument('--train_on_full_data', action='store_true', dest='train_on_full_data', \

@@ -484,6 +484,15 @@ class TrainingLightningModule(pl.LightningModule):
 		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity']
 		
 		return losses
+	
+    ### DEFINE SELF-SUPERVISED LOSS FUNCTION
+	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
+		losses = {}
+		losses['pre_reconstruction'] = F.mse_loss(x_pred, x_true, reduction='mean')
+		losses['pre_mask_pred'] = F.cross_entropy(input=mask_pred, target=mask_true)
+		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_mask_pred']
+		return losses
+
 
 	def log_losses(self, losses, key, dataloader_name=""):
 		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
@@ -500,8 +509,30 @@ class TrainingLightningModule(pl.LightningModule):
 		if self.args.num_classes==2:
 			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 
+	def pre_training_step(self, batch, batch_idx):
+		x, y_true = batch
+	
+		x_pred, mask, mask_pred = self.pre_forward(x)
+
+		losses = self.pre_loss(x, x_pred, mask, mask_pred)
+
+		self.log_losses(losses, key='pre_train')
+
+		
+		outputs = {
+			'loss': losses['pre_total'],
+			'losses': detach_tensors(losses),
+			'y_true': mask,
+			'y_pred': mask_pred
+		}
+		self.training_step_outputs.append(outputs)
+		return outputs
+
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
+
+		if self.global_step < self.args.num_pretrain_steps:
+			return self.pre_training_step(batch, batch_idx)
 	
 		y_hat, x_hat, sparsity_weights = self.forward(x)
 
@@ -626,7 +657,7 @@ class TrainingLightningModule(pl.LightningModule):
 	def on_train_end(self):
 		'''logs mask parameters to wandb'''
 		wandb.log({"best_mask_parameters": self.mask.data})
-  
+	
 	def configure_optimizers(self):
 		params = self.parameters()
 
@@ -767,6 +798,19 @@ class FWAL(TrainingLightningModule):
             nn.ReLU(),
             nn.Linear(50, args.num_features)  # Last layer outputs num_features
         )
+        
+        # define weights for pre-training task
+        self.mask_predictor_module = nn.Sequential( 
+            nn.Linear(args.num_features, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, 50),
+            nn.ReLU(),
+            nn.Linear(50, args.num_features)  # Last layer outputs num_features
+        )
 
         # Prediction Module: 5 layers with 50 neurons each
         self.prediction_module = nn.Sequential(
@@ -793,8 +837,23 @@ class FWAL(TrainingLightningModule):
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
             
         return x * sparsity_weights, sparsity_weights
-        
 
+    def pre_forward(self, x):
+        # Ensure pi is a tensor and has the shape compatible with x's features
+        pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
+        
+        # Sample from the multivariate Bernoulli distribution
+        mask = torch.bernoulli(pi_tensor)
+        
+        # Select the features based on the mask
+        masked_x = x * mask
+        
+        reconstructed_x = self.reconstruction_module(masked_x)
+        
+        mask_pred = self.mask_predictor_module(reconstructed_x)
+        
+        return reconstructed_x, mask, mask_pred
+    
     def forward(self, x, test_time=False):
         """
         Forward pass for training
