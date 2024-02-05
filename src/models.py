@@ -489,12 +489,12 @@ class TrainingLightningModule(pl.LightningModule):
 	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
 		losses = {}
 		losses['pre_reconstruction'] = F.mse_loss(x_pred, x_true, reduction='mean')
-		losses['pre_cross_entropy'] = F.cross_entropy(input=mask_pred, target=mask_true)
+		losses['pre_cross_entropy'] = F.binary_cross_entropy_with_logits(mask_pred, mask_true)
 		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_cross_entropy']
 		return losses
 
 	def log_pre_losses(self, losses, key, dataloader_name=""):
-		self.log(f"{key}/total_pre_loss{dataloader_name}", losses['pre_total'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/pre_total_loss{dataloader_name}", losses['pre_total'].item(), sync_dist=self.args.hpc_run)
 		self.log(f"{key}/pre_reconstruction_loss{dataloader_name}", losses['pre_reconstruction'].item(), sync_dist=self.args.hpc_run)
 		self.log(f"{key}/pre_cross_entropy_loss{dataloader_name}", losses['pre_cross_entropy'].item(), sync_dist=self.args.hpc_run)
 
@@ -504,9 +504,10 @@ class TrainingLightningModule(pl.LightningModule):
 		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item(), sync_dist=self.args.hpc_run)
 		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item(), sync_dist=self.args.hpc_run)
 
-	def log_epoch_metrics(self, outputs, key, dataloader_name=""): # TODO make a log_pre_epoch_metrics
+	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
-		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
+		if self.current_epoch >= self.args.pretrain_epochs:
+			self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
@@ -527,7 +528,7 @@ class TrainingLightningModule(pl.LightningModule):
 			'loss': losses['pre_total'],
 			'losses': detach_tensors(losses),
 			'y_true': mask,
-			'y_pred': mask_pred
+			'y_pred': (mask_pred>0).float()
 		}
 		self.training_step_outputs.append(outputs)
 		return outputs
@@ -576,7 +577,7 @@ class TrainingLightningModule(pl.LightningModule):
 		output = {
 			'losses': detach_tensors(losses),
 			'y_true': mask,
-			'y_pred': mask_pred
+			'y_pred': (mask_pred>0).float()
 		}
 		
 		while len(self.validation_step_outputs) <= dataloader_idx:
@@ -627,7 +628,7 @@ class TrainingLightningModule(pl.LightningModule):
 			if self.current_epoch < self.args.pretrain_epochs:
 				
 				losses = {
-					'total': np.mean([output['losses']['total'].item() for output in outputs]),
+					'pre_total': np.mean([output['losses']['pre_total'].item() for output in outputs]),
 					'pre_reconstruction': np.mean([output['losses']['pre_reconstruction'].item() for output in outputs]),
 					'pre_cross_entropy': np.mean([output['losses']['pre_cross_entropy'].item() for output in outputs]),
 				}

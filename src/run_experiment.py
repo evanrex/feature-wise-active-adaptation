@@ -63,6 +63,45 @@ def create_wandb_logger(args):
 
 	return wandb_logger
 
+class CustomEarlyStopping(EarlyStopping):
+    def __init__(self, pretrain_epochs, **kwargs):
+        super().__init__(**kwargs)
+        self.pretrain_epochs = pretrain_epochs
+
+    def on_validation_end(self, trainer, pl_module):
+        '''
+		Only activates once the pre-training is over
+        '''
+        # Check if the current epoch is less than pretrain_epochs
+        if trainer.current_epoch < self.pretrain_epochs:
+            # Skip the early stopping check
+            return
+        # Otherwise, proceed with the normal early stopping logic
+        super().on_validation_end(trainer, pl_module)
+
+
+class CustomModelCheckpoint(ModelCheckpoint):
+    def __init__(self, pretrain_epochs, **kwargs):
+        super().__init__(**kwargs)
+        self.num_pretrain_epochs = pretrain_epochs
+
+    def on_validation_end(self, trainer, pl_module):
+        # Override to skip checkpointing if the current epoch is less than num_pretrain_epochs
+        if trainer.current_epoch < self.num_pretrain_epochs:
+            return
+        # Call the superclass method to continue normal operation
+        super().on_validation_end(trainer, pl_module)
+
+    def _save_model(self, trainer, filepath):
+        # This method is called to save the model. You might need to handle the case
+        # where the monitored metric is missing. This is just a placeholder implementation.
+        # The real implementation might need adjustments based on your specific requirements.
+        metrics = trainer.callback_metrics
+        if self.monitor not in metrics and trainer.current_epoch < self.num_pretrain_epochs:
+            # Skip saving if the monitored metric is missing during pretraining
+            return
+        super()._save_model(trainer, filepath)
+
 
 def run_experiment(args):
 	args.suffix_wand_run_name = f"repeat-{args.repeat_id}__test-{args.test_split}"
@@ -304,7 +343,8 @@ def train_model(args, model, data_module, wandb_logger=None):
 			print(unexpected_keys)
 
 	mode_metric = 'max' if args.metric_model_selection=='balanced_accuracy' else 'min'
-	checkpoint_callback = ModelCheckpoint(
+	checkpoint_callback = CustomModelCheckpoint(
+		args.pretrain_epochs,
 		monitor=f'valid/{args.metric_model_selection}',
 		mode=mode_metric,
 		save_last=True,
@@ -313,7 +353,8 @@ def train_model(args, model, data_module, wandb_logger=None):
 	callbacks = [checkpoint_callback, RichProgressBar()]
 
 	if args.patience_early_stopping and args.train_on_full_data==False:
-		callbacks.append(EarlyStopping(
+		callbacks.append(CustomEarlyStopping(
+			args.pretrain_epochs,
 			monitor=f'valid/{args.metric_model_selection}',
 			mode=mode_metric,
 			patience=args.patience_early_stopping,
