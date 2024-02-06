@@ -1,0 +1,6 @@
+dataset,seed_0,seed_1,seed_2,seed_3,seed_4
+simple_trig_synth,0.9785,0.9785,0.9785,0.9785,0.9785
+simple_linear_synth,0.995,0.995,0.995,0.995,0.995
+exponential_interaction_synth,0.721,0.721,0.721,0.721,0.721
+summed_squares_exponential_synth,0.6345,0.6345,0.6345,0.6345,0.6345
+trigonometric_polynomial_synth,0.996,0.996,0.996,0.996,0.996
