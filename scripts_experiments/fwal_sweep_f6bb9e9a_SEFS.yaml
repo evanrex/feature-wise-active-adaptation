@@ -64,10 +64,10 @@ parameters:
     values:
     - gumbel_softmax
 
-  seed_model_init:  # number of folds
+  lr:  # number of folds
     distribution: categorical
     values:
-    - 0
-    - 1
-    - 2
+    - 0.01
+    - 0.001
+    - 0.00001
 
