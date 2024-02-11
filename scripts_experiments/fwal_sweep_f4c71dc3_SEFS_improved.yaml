@@ -1,0 +1,72 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: f4c71dc3_SEFS_improved
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- fwal
+- --valid_percentage
+- 0.25
+- --sparsity_type
+- global
+- --gamma
+- 1.0
+- --mask_type
+- gumbel_softmax
+- --sparsity_regularizer
+- L1
+- --sparsity_regularizer_hyperparam
+- 1
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --pretrain
+- --num_pretrain_steps
+- 5000
+- --hpc_run
+- --num_workers
+- 31 # optimal for HPC
+- --tags
+- f4c71dc3 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "self-supervised learning task to pre-train the reconstruction module using SEFS"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    # - simple_trig_synth
+    - simple_linear_synth
+    # - exponential_interaction_synth
+    # - summed_squares_exponential_synth
+    # - trigonometric_polynomial_synth
+
+  pre_alpha:
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 10
+    - 100
+    
+  pre_pi:
+    distribution: categorical
+    values:
+    - 0.2
+    - 0.5
+    - 0.8
+
+
+  lr:  # number of folds
+    distribution: categorical
+    values:
+    - 0.01
+    - 0.001
+    - 0.00001
+

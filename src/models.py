@@ -506,7 +506,7 @@ class TrainingLightningModule(pl.LightningModule):
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
-		if self.current_epoch >= self.args.pretrain_epochs:
+		if not self.args.pretrain:
 			self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
@@ -536,7 +536,7 @@ class TrainingLightningModule(pl.LightningModule):
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
 
-		if self.current_epoch < self.args.pretrain_epochs:
+		if self.args.pretrain:
 			return self.pre_training_step(batch, batch_idx)
 	
 		y_hat, x_hat, sparsity_weights = self.forward(x)
@@ -549,6 +549,8 @@ class TrainingLightningModule(pl.LightningModule):
 		# log temperature of the concrete distribution
 		if isinstance(self.first_layer, ConcreteLayer):
 			self.log("train/concrete_temperature", self.first_layer.get_temperature())
+		else:
+			self.log("train/gumbel_temperature", self.get_temperature())
 		outputs = {
 			'loss': losses['total'],
 			'losses': detach_tensors(losses),
@@ -559,7 +561,7 @@ class TrainingLightningModule(pl.LightningModule):
 		return outputs
 
 	def on_train_epoch_end(self):
-		if self.current_epoch < self.args.pretrain_epochs:
+		if self.args.pretrain:
 			self.log_epoch_metrics(self.training_step_outputs, 'pre_train')
 		else:
 			self.log_epoch_metrics(self.training_step_outputs, 'train')
@@ -591,7 +593,7 @@ class TrainingLightningModule(pl.LightningModule):
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
 
-		if self.current_epoch < self.args.pretrain_epochs:
+		if self.args.pretrain:
 			return self.pre_validation_step(batch, batch_idx, dataloader_idx)
 		
 		x, y_true = reshape_batch(batch)
@@ -625,7 +627,7 @@ class TrainingLightningModule(pl.LightningModule):
 
 		for dataloader_id, outputs in enumerate(outputs_all_dataloaders):
 			
-			if self.current_epoch < self.args.pretrain_epochs:
+			if self.args.pretrain:
 				
 				losses = {
 					'pre_total': np.mean([output['losses']['pre_total'].item() for output in outputs]),
@@ -706,10 +708,6 @@ class TrainingLightningModule(pl.LightningModule):
 			
 		# 	global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
 		# 	wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
-
-	def on_train_end(self):
-		'''logs mask parameters to wandb'''
-		wandb.log({"best_mask_parameters": self.mask.data})
 	
 	def configure_optimizers(self):
 		params = self.parameters()
@@ -829,7 +827,13 @@ class FWAL(TrainingLightningModule):
         self.args = args
         self.log_test_key = None
         self.learning_rate = args.lr
-        
+        self.temp_start = 10
+        self.temp_end = 0.01
+        # the iteration is used in annealing the temperature
+        # 	it's increased with every call to sample during training
+        self.current_iteration = 0 
+        self.anneal_iterations = args.concrete_anneal_iterations 
+
         if self.args.mask_init_value is None:
             mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
             self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
@@ -878,19 +882,38 @@ class FWAL(TrainingLightningModule):
             nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
         )
     
-    def mask_module(self, x):
+    def mask_module(self, x, test_time=False):
         # constructing sparsity weights from mask module
         if self.args.as_MLP_baseline:
             return x, torch.ones_like(x)
         if self.args.mask_type == "sigmoid":
             sparsity_weights = torch.sigmoid(self.mask)
         elif self.args.mask_type == "gumbel_softmax":
-            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), hard=True)[:,0]
+            if test_time:
+                sparsity_weights = (self.mask>0).float()
+                sparsity_weights_probs = torch.sigmoid(self.mask)
+            else:
+                if self.training:
+                    self.current_iteration += 1
+                temperature = self.get_temperature()
+                soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=False, dim=-1)
+                _, max_indices = soft_outputs.max(dim=-1, keepdim=True)
+                hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:,0]
+                soft_outputs=soft_outputs[:,0]
+                sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
+                sparsity_weights_probs = soft_outputs
         else:
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
             
-        return x * sparsity_weights, sparsity_weights
+        return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
 
+    def get_temperature(self):
+		# compute temperature		
+        if self.current_iteration >= self.anneal_iterations:
+            return self.temp_end
+        else:
+            return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
+		
     def pre_forward(self, x):
         # Ensure pi is a tensor and has the shape compatible with x's features
         pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
@@ -911,11 +934,8 @@ class FWAL(TrainingLightningModule):
         """
         Forward pass for training
         """
-        if test_time:
-            sparsity_weights = self.necessary_features().float()
-            masked_x = x * sparsity_weights
-        else:
-            masked_x, sparsity_weights = self.mask_module(x)
+
+        masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time)
 		
         reconstructed_x = self.reconstruction_module(masked_x)
         
@@ -923,7 +943,7 @@ class FWAL(TrainingLightningModule):
 
         reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
         
-        return prediction, reconstructed_x, sparsity_weights
+        return prediction, reconstructed_x, sparsity_weights_probs
     
     def necessary_features(self, k=None):
         """
@@ -946,7 +966,10 @@ class FWAL(TrainingLightningModule):
             return self.mask > 0
         else:
             raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-        
+
+    def finish_pretraining(self):
+        self.current_iteration = 0
+			
     def inference(self, x):
         """
         Performs inference with test-time interventions
@@ -958,7 +981,7 @@ class FWAL(TrainingLightningModule):
         original_x = x.clone()  # Keep a copy of the original x for later
         x = torch.nan_to_num(x, nan=0.0)
         
-        masked_x, sparsity_weights = self.mask_module(x)
+        masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x)
         
         # Step 2: Reconstruction as in the original forward pass
         reconstructed_x = self.reconstruction_module(masked_x)

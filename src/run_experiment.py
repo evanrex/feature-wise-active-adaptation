@@ -252,13 +252,18 @@ def run_experiment(args):
 
 		args.num_tasks = args.feature_extractor_dims[-1] 			# number of output units of the feature extractor. Used for convenience when defining the GP
 
-		
+				
+		if args.pretrain and (args.num_pretrain_steps!=-1):
+			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
+			steps_per_epoch = np.floor(args.train_size / args.batch_size)
+			args.max_pretrain_epochs = int(np.ceil((args.num_pretrain_steps) / steps_per_epoch)) 
+			print(f"Pre-Training for max_pretrain_epochs = {args.max_pretrain_epochs}")
+
+
 		if args.max_steps!=-1:
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
-			args.pretrain_epochs = int(np.ceil((args.num_pretrain_steps) / steps_per_epoch))
-			args.max_epochs = int(np.ceil((args.max_steps) / steps_per_epoch)) + args.pretrain_epochs
-			args.max_steps += args.pretrain_epochs * steps_per_epoch
+			args.max_epochs = int(np.ceil((args.max_steps) / steps_per_epoch)) 
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
@@ -285,7 +290,11 @@ def run_experiment(args):
 			#### Create model
 			model = create_model(args, data_module)
 
-			trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
+			if args.pretrain:
+				pretrainer,pre_checkpoint_callback = pre_train_model(args, model, data_module, wandb_logger)
+				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger, pre_trained_ckpt=pre_checkpoint_callback.best_model_path)
+			else:
+				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
 
 			if args.test_time_interventions == "evaluate_test_time_interventions":
 				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
@@ -299,6 +308,19 @@ def run_experiment(args):
 
 				print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
 				wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
+			
+			if args.model =='fwal':
+				# Convert boolean tensor to tensor of 0s and 1s
+				int_list = model.necessary_features().int().tolist()
+				# Convert list of integers to a string of 0s and 1s
+				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+
+				wandb.log({"best_mask_parameters": model.mask.data})
+				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+				wandb_logger.log_metrics({
+					'best_mask': mask_as_string_of_ones_and_zeros,
+					'best_mask_parameters': model.mask.data
+				})
 
 			#### Compute metrics for the best model
 			model.log_test_key = 'bestmodel_train'
@@ -314,8 +336,81 @@ def run_experiment(args):
 	wandb.finish()
 
 	print("\nExiting from train function..")
+
 	
-def train_model(args, model, data_module, wandb_logger=None):
+def pre_train_model(args, model, data_module, wandb_logger=None):
+	"""
+	Return 
+	- Pytorch Lightening Trainer
+	- checkpoint callback
+	"""
+
+	##### Train
+	if args.saved_checkpoint_name:
+		wandb_artifact_path = f'andreimargeloiu/low-data/{args.saved_checkpoint_name}'
+		print(f"\nDownloading artifact: {wandb_artifact_path}...")
+
+		artifact = wandb.use_artifact(wandb_artifact_path, type='model')
+		artifact_dir = artifact.download()
+		model_checkpoint = torch.load(os.path.join(artifact_dir, 'model.ckpt'))
+		weights = model_checkpoint['state_dict']
+		print("Artifact downloaded")
+
+		if args.load_model_weights:
+			print(f"\nLoading pretrained weights into model...")
+			missing_keys, unexpected_keys = model.load_state_dict(weights, strict=False)
+			print(f"Missing keys: \n")
+			print(missing_keys)
+
+			print(f"Unexpected keys: \n")
+			print(unexpected_keys)
+
+	mode_metric = 'max' if args.pretrain_metric_model_selection=='balanced_accuracy' else 'min'
+	checkpoint_callback = ModelCheckpoint(
+		monitor=f'pre_valid/{args.pretrain_metric_model_selection}',
+		mode=mode_metric,
+		save_last=True,
+		verbose=True
+	)
+	callbacks = [checkpoint_callback, RichProgressBar()]
+
+	if args.patience_early_stopping and args.train_on_full_data==False:
+		callbacks.append(EarlyStopping(
+			monitor=f'pre_valid/{args.pretrain_metric_model_selection}',
+			mode=mode_metric,
+			patience=args.patience_early_stopping,
+		))
+	callbacks.append(LearningRateMonitor(logging_interval='step'))
+
+	pl.seed_everything(args.seed_training, workers=True)
+	trainer = pl.Trainer(
+		# Training
+		max_steps=args.num_pretrain_steps,
+		gradient_clip_val=2.5,
+
+		# logging
+		logger=wandb_logger,
+		log_every_n_steps = 1,
+		val_check_interval = args.val_check_interval,
+		callbacks = callbacks,
+
+		# miscellaneous
+		accelerator="auto",
+		devices="auto",
+		detect_anomaly= (not args.hpc_run),
+		overfit_batches=args.overfit_batches,
+		deterministic=args.deterministic,
+	)
+	# train
+	trainer.fit(model, data_module)
+	args.pretrain = False # update flag so future training is normal and not pretraining
+	model.finish_pretraining()
+	
+	return trainer, checkpoint_callback
+
+
+
+def train_model(args, model, data_module, wandb_logger=None, pre_trained_ckpt=None):
 	"""
 	Return 
 	- Pytorch Lightening Trainer
@@ -343,8 +438,7 @@ def train_model(args, model, data_module, wandb_logger=None):
 			print(unexpected_keys)
 
 	mode_metric = 'max' if args.metric_model_selection=='balanced_accuracy' else 'min'
-	checkpoint_callback = CustomModelCheckpoint(
-		args.pretrain_epochs,
+	checkpoint_callback = ModelCheckpoint(
 		monitor=f'valid/{args.metric_model_selection}',
 		mode=mode_metric,
 		save_last=True,
@@ -353,8 +447,7 @@ def train_model(args, model, data_module, wandb_logger=None):
 	callbacks = [checkpoint_callback, RichProgressBar()]
 
 	if args.patience_early_stopping and args.train_on_full_data==False:
-		callbacks.append(CustomEarlyStopping(
-			args.pretrain_epochs,
+		callbacks.append(EarlyStopping(
 			monitor=f'valid/{args.metric_model_selection}',
 			mode=mode_metric,
 			patience=args.patience_early_stopping,
@@ -505,7 +598,7 @@ def parse_arguments(args=None):
 
 	parser.add_argument('--max_steps', type=int, default=10000, help='Specify the max number of steps to train.')
 	parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
-	parser.add_argument('--batch_size', type=int, default=8)
+	parser.add_argument('--batch_size', type=int, default=128)
 
 	parser.add_argument('--patient_preprocessing', type=str, default='standard',
 						choices=['raw', 'standard', 'minmax'],
@@ -515,6 +608,8 @@ def parse_arguments(args=None):
 						help='Preprocessing applied on each ROW of the D x N matrix, where a row contains all patient expressions for one gene.')
 
 	####### Self-supervised pre-training
+	parser.add_argument('--pretrain', action='store_true', dest='pretrain', \
+						help='Boolean, whether to perform the SEFS self-supervised pretraining')
 	parser.add_argument('--num_pretrain_steps', type=int, default=0,
 		help='number of steps to pre-train the model with the SEFS self-supervision task')
 	parser.add_argument('--pre_alpha', type=float, default=1,
@@ -532,13 +627,14 @@ def parse_arguments(args=None):
 
 
 	####### Validation
-	parser.add_argument('--metric_model_selection', type=str, default='cross_entropy_loss',
+	parser.add_argument('--metric_model_selection', type=str, default='total_loss',
 						choices=['cross_entropy_loss', 'total_loss', 'balanced_accuracy'])
-
-	parser.add_argument('--patience_early_stopping', type=int, default=200,
+	parser.add_argument('--pretrain_metric_model_selection', type=str, default='pre_total_loss',
+						choices=['pre_cross_entropy_loss', 'pre_total_loss', 'pre_reconstruction_loss'])
+	parser.add_argument('--patience_early_stopping', type=int, default=5,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 							 It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
-	parser.add_argument('--val_check_interval', type=int, default=5, 
+	parser.add_argument('--val_check_interval', type=int, default=None, 
 						help='number of steps at which to check the validation')
 
 	# type of data augmentation
@@ -582,7 +678,7 @@ def parse_arguments(args=None):
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')
-	parser.add_argument('--lr_scheduler', type=str, choices=['plateau', 'cosine_warm_restart', 'linear', 'lambda'], default='lambda')
+	parser.add_argument('--lr_scheduler', type=str, choices=['plateau', 'cosine_warm_restart', 'linear', 'lambda'], default=None)
 	parser.add_argument('--cosine_warm_restart_eta_min', type=float, default=1e-6)
 	parser.add_argument('--cosine_warm_restart_t_0', type=int, default=35)
 	parser.add_argument('--cosine_warm_restart_t_mult', type=float, default=1)
