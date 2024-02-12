@@ -309,18 +309,7 @@ def run_experiment(args):
 				print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
 				wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
 			
-			if args.model =='fwal':
-				# Convert boolean tensor to tensor of 0s and 1s
-				int_list = model.necessary_features().int().tolist()
-				# Convert list of integers to a string of 0s and 1s
-				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
 
-				wandb.log({"best_mask_parameters": model.mask.data})
-				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
-				wandb_logger.log_metrics({
-					'best_mask': mask_as_string_of_ones_and_zeros,
-					'best_mask_parameters': model.mask.data
-				})
 
 			#### Compute metrics for the best model
 			model.log_test_key = 'bestmodel_train'
@@ -332,7 +321,20 @@ def run_experiment(args):
 			model.log_test_key = 'bestmodel_test'
 			trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
 
-	
+			if args.model =='fwal':
+				checkpoint = torch.load(checkpoint_path)
+				model.load_state_dict(checkpoint['state_dict'])
+				# Convert boolean tensor to tensor of 0s and 1s
+				int_list = model.necessary_features().int().tolist()
+				# Convert list of integers to a string of 0s and 1s
+				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+
+				wandb.log({"best_mask_parameters": model.mask.data})
+				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+				wandb_logger.log_metrics({
+					'best_mask': mask_as_string_of_ones_and_zeros,
+					'best_mask_parameters': model.mask.data
+				})
 	wandb.finish()
 
 	print("\nExiting from train function..")
@@ -374,11 +376,11 @@ def pre_train_model(args, model, data_module, wandb_logger=None):
 	)
 	callbacks = [checkpoint_callback, RichProgressBar()]
 
-	if args.patience_early_stopping and args.train_on_full_data==False:
+	if args.pretrain_patience_early_stopping and args.train_on_full_data==False:
 		callbacks.append(EarlyStopping(
 			monitor=f'pre_valid/{args.pretrain_metric_model_selection}',
 			mode=mode_metric,
-			patience=args.patience_early_stopping,
+			patience=args.pretrain_patience_early_stopping,
 		))
 	callbacks.append(LearningRateMonitor(logging_interval='step'))
 
@@ -631,9 +633,12 @@ def parse_arguments(args=None):
 						choices=['cross_entropy_loss', 'total_loss', 'balanced_accuracy'])
 	parser.add_argument('--pretrain_metric_model_selection', type=str, default='pre_total_loss',
 						choices=['pre_cross_entropy_loss', 'pre_total_loss', 'pre_reconstruction_loss'])
-	parser.add_argument('--patience_early_stopping', type=int, default=5,
+	parser.add_argument('--patience_early_stopping', type=int, default=15,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 							 It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
+	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=5,
+						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
+							 It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
 	parser.add_argument('--val_check_interval', type=int, default=None, 
 						help='number of steps at which to check the validation')
 
