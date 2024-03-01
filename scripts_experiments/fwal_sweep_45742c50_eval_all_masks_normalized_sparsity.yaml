@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: f4c71dc3_SEFS_improved2
+name: 45742c50_eval_all_masks_normalized_sparsity
 
 command:
 - ${env}
@@ -11,6 +11,7 @@ command:
 - --test_time_interventions 
 - evaluate_test_time_interventions
 - --evaluate_all_masks
+- --normalize_sparsity
 - --pretrain
 - --num_pretrain_steps
 - 5000
@@ -18,9 +19,9 @@ command:
 - --num_workers
 - 31 # optimal for HPC
 - --tags
-- f4c71dc3 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- 45742c50 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "self-supervised learning task to pre-train the reconstruction module using SEFS"
+- "Logging masks every val step and then comparing all logged masks. Normalized sparsity"
 - ${args}
 
 method: grid

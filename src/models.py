@@ -475,6 +475,9 @@ class TrainingLightningModule(pl.LightningModule):
 				losses['sparsity'] = self.args.sparsity_regularizer_hyperparam * hoyer_reg
 			else:
 				raise Exception("Sparsity regularizer not valid")
+
+			if self.args.normalize_sparsity:
+				losses['sparsity'] = (1/len(sparsity_weights)) * losses['sparsity']
 		
 		if self.args.as_MLP_baseline:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
@@ -657,6 +660,9 @@ class TrainingLightningModule(pl.LightningModule):
 				self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
 				self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
 
+				if self.args.model =='fwal':
+					self.masks.append(self.mask.data.cpu().numpy().copy())
+     
 		self.validation_step_outputs.clear()
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
@@ -822,179 +828,185 @@ class DNN(TrainingLightningModule):
 		return y_hat, x_hat, sparsity_weights
 
 class FWAL(TrainingLightningModule):
-    def __init__(self, args):
-        super().__init__(args)
-        self.args = args
-        self.log_test_key = None
-        self.learning_rate = args.lr
-        self.temp_start = 10
-        self.temp_end = 0.01
-        # the iteration is used in annealing the temperature
-        # 	it's increased with every call to sample during training
-        self.current_iteration = 0 
-        self.anneal_iterations = args.concrete_anneal_iterations 
+	def __init__(self, args):
+		super().__init__(args)
+		self.args = args
+		self.log_test_key = None
+		self.learning_rate = args.lr
+		self.temp_start = 10
+		self.temp_end = 0.01
+		# the iteration is used in annealing the temperature
+		# 	it's increased with every call to sample during training
+		self.current_iteration = 0 
+		self.anneal_iterations = args.concrete_anneal_iterations 
+		self.masks = []
 
-        if self.args.mask_init_value is None:
-            mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
-            self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
-        else:
-            self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)
-        
-        self.decoder=True
-        self.first_layer = None
-        
+		if self.args.mask_init_value is not None:
+			self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)  
+		elif args.mask_init_p_array is not None:
+			probabilities = torch.Tensor([float(x) for x in args.mask_init_p_array.split(',')])
+			logits = torch.log(probabilities / (1 - probabilities))
+			self.mask = nn.Parameter(logits, requires_grad=True)
+		else:
+			mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+			self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+
+   
+		self.decoder=True
+		self.first_layer = None
+
 		# Reconstruction Module: 5 layers with 50 neurons each
-        self.reconstruction_module = nn.Sequential(
-            nn.Linear(args.num_features, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, args.num_features)  # Last layer outputs num_features
-        )
+		self.reconstruction_module = nn.Sequential(
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_features)  # Last layer outputs num_features
+		)
         
         # define weights for pre-training task
-        self.mask_predictor_module = nn.Sequential( 
-            nn.Linear(args.num_features, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, args.num_features)  # Last layer outputs num_features
-        )
+		self.mask_predictor_module = nn.Sequential( 
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_features)  # Last layer outputs num_features
+		)
 
-        # Prediction Module: 5 layers with 50 neurons each
-        self.prediction_module = nn.Sequential(
-            nn.Linear(args.num_features, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
-        )
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = nn.Sequential(
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
+		)
     
-    def mask_module(self, x, test_time=False):
-        # constructing sparsity weights from mask module
-        if self.args.as_MLP_baseline:
-            return x, torch.ones_like(x)
-        if self.args.mask_type == "sigmoid":
-            sparsity_weights = torch.sigmoid(self.mask)
-        elif self.args.mask_type == "gumbel_softmax":
-            if test_time:
-                sparsity_weights = (self.mask>0).float()
-                sparsity_weights_probs = torch.sigmoid(self.mask)
-            else:
-                if self.training:
-                    self.current_iteration += 1
-                temperature = self.get_temperature()
-                soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=False, dim=-1)
-                _, max_indices = soft_outputs.max(dim=-1, keepdim=True)
-                hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:,0]
-                soft_outputs=soft_outputs[:,0]
-                sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
-                sparsity_weights_probs = soft_outputs
-        else:
-            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-            
-        return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
-
-    def get_temperature(self):
-		# compute temperature		
-        if self.current_iteration >= self.anneal_iterations:
-            return self.temp_end
-        else:
-            return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
-		
-    def pre_forward(self, x):
-        # Ensure pi is a tensor and has the shape compatible with x's features
-        pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
-        
-        # Sample from the multivariate Bernoulli distribution
-        mask = torch.bernoulli(pi_tensor)
-        
-        # Select the features based on the mask
-        masked_x = x * mask
-        
-        reconstructed_x = self.reconstruction_module(masked_x)
-        
-        mask_pred = self.mask_predictor_module(reconstructed_x)
-        
-        return reconstructed_x, mask, mask_pred
-    
-    def forward(self, x, test_time=False):
-        """
-        Forward pass for training
-        """
-
-        masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time)
-		
-        reconstructed_x = self.reconstruction_module(masked_x)
-        
-        prediction = self.prediction_module(reconstructed_x)
-
-        reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
-        
-        return prediction, reconstructed_x, sparsity_weights_probs
-    
-    def necessary_features(self, k=None):
-        """
-        k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
-        Returns a boolean mask for which features are deemed necessary and which are not.
-        """
-        
-        if self.args.as_MLP_baseline:
-            return torch.ones_like(self.mask)
-        
-        if k == None:
-            k = self.args.num_necessary_features
-        if self.args.mask_type == "sigmoid":
-            sigmoid_mask = torch.sigmoid(self.mask)
-            _, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
-            boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
-            boolean_mask[indices] = True  # Set the top k indices to True
-            return boolean_mask
-        elif self.args.mask_type =="gumbel_softmax":
-            return self.mask > 0
-        else:
-            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-
-    def finish_pretraining(self):
-        self.current_iteration = 0
+	def mask_module(self, x, test_time=False):
+		# constructing sparsity weights from mask module
+		if self.args.as_MLP_baseline:
+			return x, torch.ones_like(x), torch.ones_like(x)
+		if self.args.mask_type == "sigmoid":
+			sparsity_weights = torch.sigmoid(self.mask)
+		elif self.args.mask_type == "gumbel_softmax":
+			if test_time:
+				sparsity_weights = (self.mask>0).float()
+				sparsity_weights_probs = torch.sigmoid(self.mask)
+			else:
+				if self.training:
+					self.current_iteration += 1
+				temperature = self.get_temperature()
+				soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=False, dim=-1)
+				_, max_indices = soft_outputs.max(dim=-1, keepdim=True)
+				hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:,0]
+				soft_outputs=soft_outputs[:,0]
+				sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
+				sparsity_weights_probs = soft_outputs
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
 			
-    def inference(self, x):
-        """
-        Performs inference with test-time interventions
-        """
-        x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
+		return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
+
+	def get_temperature(self):
+		# compute temperature		
+		if self.current_iteration >= self.anneal_iterations:
+			return self.temp_end
+		else:
+			return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
+		
+	def pre_forward(self, x):
+		# Ensure pi is a tensor and has the shape compatible with x's features
+		pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
+		
+		# Sample from the multivariate Bernoulli distribution
+		mask = torch.bernoulli(pi_tensor)
+		
+		# Select the features based on the mask
+		masked_x = x * mask
+		
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		mask_pred = self.mask_predictor_module(reconstructed_x)
+		
+		return reconstructed_x, mask, mask_pred
     
-        # Step 1: Replace None (or equivalent) values with 0
-        # Assuming x is a tensor and None values are represented as NaNs
-        original_x = x.clone()  # Keep a copy of the original x for later
-        x = torch.nan_to_num(x, nan=0.0)
-        
-        masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x)
-        
-        # Step 2: Reconstruction as in the original forward pass
-        reconstructed_x = self.reconstruction_module(masked_x)
-        
-        # Step 3: Replace reconstructed values with original non-None values
-        # Assuming None values were NaN and were replaced with 0 in original_x
-        mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
-        reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
-        
-        # Return the reconstructed_x and prediction
-        prediction = self.prediction_module(reconstructed_x)
-        
-        prediction = torch.softmax(prediction, dim=1)
-        
-        return prediction
-	
+	def forward(self, x, test_time=False):
+		"""
+		Forward pass for training
+		"""
+
+		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time)
+		
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		prediction = self.prediction_module(reconstructed_x)
+
+		reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
+		
+		return prediction, reconstructed_x, sparsity_weights_probs
+    
+	def necessary_features(self, k=None):
+		"""
+		k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
+		Returns a boolean mask for which features are deemed necessary and which are not.
+		"""
+		
+		if self.args.as_MLP_baseline:
+			return torch.ones_like(self.mask)
+		
+		if k == None:
+			k = self.args.num_necessary_features
+		if self.args.mask_type == "sigmoid":
+			sigmoid_mask = torch.sigmoid(self.mask)
+			_, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
+			boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
+			boolean_mask[indices] = True  # Set the top k indices to True
+			return boolean_mask
+		elif self.args.mask_type =="gumbel_softmax":
+			return self.mask > 0
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+
+	def finish_pretraining(self):
+		self.current_iteration = 0
+			
+	def inference(self, x):
+		"""
+		Performs inference with test-time interventions
+		"""
+		x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
+
+		# Step 1: Replace None (or equivalent) values with 0
+		# Assuming x is a tensor and None values are represented as NaNs
+		original_x = x.clone()  # Keep a copy of the original x for later
+		x = torch.nan_to_num(x, nan=0.0)
+		
+		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=True)
+		
+		# Step 2: Reconstruction as in the original forward pass
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		# Step 3: Replace reconstructed values with original non-None values
+		# Assuming None values were NaN and were replaced with 0 in original_x
+		mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
+		reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
+		
+		# Return the reconstructed_x and prediction
+		prediction = self.prediction_module(reconstructed_x)
+		
+		prediction = torch.softmax(prediction, dim=1)
+		
+		return prediction
+

@@ -295,6 +295,9 @@ def run_experiment(args):
 				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger, pre_trained_ckpt=pre_checkpoint_callback.best_model_path)
 			else:
 				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
+			
+			if args.evaluate_all_masks:
+				evaluate_all_masks(args, model,data_module, wandb_logger)
 
 			if args.test_time_interventions == "evaluate_test_time_interventions":
 				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
@@ -509,7 +512,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='dnn')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
 						help='layer size for the feature extractor. If using a virtual layer,\
 							  the first dimension must match it.')
@@ -522,7 +525,7 @@ def parse_arguments(args=None):
 
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
-	parser.add_argument('--gamma', type=float, default=0, 
+	parser.add_argument('--gamma', type=float, default=1.0, 
 						help='The factor multiplied to the reconstruction error. \
 							  If >0, then create a decoder with a reconstruction loss. \
 							  If ==0, then dont create a decoder.')
@@ -549,7 +552,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--lassonet_M', type=float, default=10)
 
 	####### Sparsity
-	parser.add_argument('--sparsity_type', type=str, default=None,
+	parser.add_argument('--sparsity_type', type=str, default='global',
 						choices=['global', 'local'], help="Use global or local sparsity")
 	parser.add_argument('--sparsity_method', type=str, default='sparsity_network',
 						choices=['learnable_vector', 'sparsity_network'], help="The method to induce sparsity")
@@ -561,10 +564,11 @@ def parse_arguments(args=None):
 	parser.add_argument('--sparsity_gene_embedding_size', type=int, default=50)
 	parser.add_argument('--sparsity_regularizer', type=str, default='L1',
 						choices=['L1', 'hoyer'])
-	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
+	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=1.0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
 	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
 						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
+	parser.add_argument('--normalize_sparsity', action='store_true', dest='normalize_sparsity', help='If true, divide sparsity lsos by number of features')
 
 
 	####### DKL
@@ -633,13 +637,13 @@ def parse_arguments(args=None):
 						choices=['cross_entropy_loss', 'total_loss', 'balanced_accuracy'])
 	parser.add_argument('--pretrain_metric_model_selection', type=str, default='pre_total_loss',
 						choices=['pre_cross_entropy_loss', 'pre_total_loss', 'pre_reconstruction_loss'])
-	parser.add_argument('--patience_early_stopping', type=int, default=15,
+	parser.add_argument('--patience_early_stopping', type=int, default=50,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 							 It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
 	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=5,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 							 It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
-	parser.add_argument('--val_check_interval', type=int, default=None, 
+	parser.add_argument('--val_check_interval', type=int, default=10, 
 						help='number of steps at which to check the validation')
 
 	# type of data augmentation
@@ -650,6 +654,8 @@ def parse_arguments(args=None):
 							  in addition to the standard validation")
 	parser.add_argument('--valid_aug_times', type=int, nargs="+",
 						help="Number time to perform data augmentation on the validation sample.")
+	parser.add_argument('--restrict_features', action='store_true', dest='restrict_features')
+	parser.add_argument('--chosen_features_list', dest='chosen_features_list', type=str, required=False, help='The list is a comma-separated string. Required if --restrict_features. e.g.: "x1,x3,x4"')
 
 
 	####### Testing
@@ -663,7 +669,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--repeat_id', type=int, default=0, help='each repeat_id gives a different random seed for shuffling the dataset')
 	parser.add_argument('--cv_folds', type=int, default=5, help="Number of CV splits")
 	parser.add_argument('--test_split', type=int, default=0, help="Index of the test split. It should be smaller than `cv_folds`")
-	parser.add_argument('--valid_percentage', type=float, default=0.1, help='Percentage of training data used for validation')
+	parser.add_argument('--valid_percentage', type=float, default=0.25, help='Percentage of training data used for validation')
 							  
 
 	####### Evaluation by taking random samples (with user-defined train/valid/test sizes) from the dataset
@@ -680,6 +686,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
 	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
+	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')
@@ -705,9 +712,10 @@ def parse_arguments(args=None):
 
 	# SEEDS
 	parser.add_argument('--seed_model_init', type=int, default=42, help='Seed for initializing the model (to have the same weights)')
-	parser.add_argument('--seed_model_mask', type=int, default=42, help='Seed for initializing the model mask (to have the same weights)')
+	parser.add_argument('--seed_model_mask', type=int, default=None, help='Seed for initializing the model mask (to have the same weights)')
 	parser.add_argument('--mask_init_value', type=int, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation.')
 	parser.add_argument('--seed_training', type=int, default=42, help='Seed for training (e.g., batch ordering)')
+	parser.add_argument('--mask_init_p_array', type=str, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation. expects string list of probabilities: e.g.: "0.1,0.99,0,1" ')
 
 	parser.add_argument('--seed_kfold', type=int, help='Seed used for doing the kfold in train/test split')
 	parser.add_argument('--seed_validation', type=int, help='Seed used for selecting the validation split.')

@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: f4c71dc3_SEFS_improved2
+name: 8e1aad45_simple_trig
 
 command:
 - ${env}
@@ -14,11 +14,13 @@ command:
 - --pretrain
 - --num_pretrain_steps
 - 5000
+- --max_steps
+- 50
 - --hpc_run
 - --num_workers
 - 31 # optimal for HPC
 - --tags
-- f4c71dc3 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- 8e1aad45 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
 - "self-supervised learning task to pre-train the reconstruction module using SEFS"
 - ${args}
@@ -29,17 +31,8 @@ parameters:
     distribution: categorical
     values:
     - simple_trig_synth
-    # - simple_linear_synth
-    # - exponential_interaction_synth
-    - summed_squares_exponential_synth
-    - trigonometric_polynomial_synth
-
-  metric_model_selection:
-    distribution: categorical
-    values:
-    # - cross_entropy_loss
-    - total_loss
-    # - balanced_accuracy
+    # - summed_squares_exponential_synth
+    # - trigonometric_polynomial_synth
 
   seed_model_init:  # number of folds
     distribution: categorical
@@ -47,3 +40,9 @@ parameters:
     - 0
     - 1
     - 2
+
+  mask_init_p_array:
+    distribution: categorical
+    values:
+      - "0.,0.07439328,-0.11117441, 0.,0.14795694"
+      - "0.01352562,0.14731876,0.81347062,0.01378728,0.01189771"

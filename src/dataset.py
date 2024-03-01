@@ -716,6 +716,14 @@ def create_data_module(args):
 				X, y = load_summed_squares_exponential_synth()
 			elif dataset=='trigonometric_polynomial_synth':
 				X, y = load_trigonometric_polynomial_synth()
+			
+			if args.restrict_features:
+				if args.chosen_features_list is not None:
+					chosen_features_list = args.chosen_features_list.split(',')
+					X = X[chosen_features_list]
+				else:
+					raise Exception("args error: chosen_feature_list is required for --restrict_features.")
+        
     
 			data_module = create_datamodule_with_cross_validation(args, X, y)
 
