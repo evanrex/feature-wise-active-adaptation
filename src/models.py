@@ -85,41 +85,41 @@ def create_model(args, data_module):
 		model = FWAL(args)
 		return model
 	
-	### create embedding matrices
-	wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
-	if args.wpn_embedding_type==args.sparsity_gene_embedding_type and args.wpn_embedding_size==args.sparsity_gene_embedding_size:
-		spn_embedding_matrix = wpn_embedding_matrix
-	else:
-		spn_embedding_matrix = data_module.get_embedding_matrix(args.sparsity_gene_embedding_type, args.sparsity_gene_embedding_size)
+	# ### create embedding matrices
+	# wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
+	# if args.wpn_embedding_type==args.sparsity_gene_embedding_type and args.wpn_embedding_size==args.sparsity_gene_embedding_size:
+	# 	spn_embedding_matrix = wpn_embedding_matrix
+	# else:
+	# 	spn_embedding_matrix = data_module.get_embedding_matrix(args.sparsity_gene_embedding_type, args.sparsity_gene_embedding_size)
 
-	### create decoder
-	if args.gamma > 0:
-		wpn_decoder = WeightPredictorNetwork(args, wpn_embedding_matrix)
-		decoder = Decoder(args, wpn_decoder)
-	else:
-		decoder = None
+	# ### create decoder
+	# if args.gamma > 0:
+	# 	wpn_decoder = WeightPredictorNetwork(args, wpn_embedding_matrix)
+	# 	decoder = Decoder(args, wpn_decoder)
+	# else:
+	# 	decoder = None
 
-	### create models
-	if args.model=='fsnet':
-		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0], is_diet_layer=True, wpn_embedding_matrix=wpn_embedding_matrix)
+	# ### create models
+	# if args.model=='fsnet':
+	# 	concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0], is_diet_layer=True, wpn_embedding_matrix=wpn_embedding_matrix)
 
-		model = DNN(args, concrete_layer, decoder)
+	# 	model = DNN(args, concrete_layer, decoder)
 
 	elif args.model=='cae': # Supervised Autoencoder
 		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0])
 
 		model = DNN(args, concrete_layer, None)
 
-	elif args.model in ['dnn', 'dietdnn']:
-		if args.model=='dnn':
-			is_diet_layer = False
-		else: # args.model=='dietdnn':
-			is_diet_layer = True
+	# elif args.model in ['dnn', 'dietdnn']:
+	# 	if args.model=='dnn':
+	# 		is_diet_layer = False
+	# 	else: # args.model=='dietdnn':
+	# 		is_diet_layer = True
 		
-		first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
-						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
+	# 	first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
+	# 					wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
 
-		model = DNN(args, first_layer, decoder)
+	# 	model = DNN(args, first_layer, decoder)
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 

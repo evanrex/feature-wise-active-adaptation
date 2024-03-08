@@ -509,6 +509,7 @@ def parse_arguments(args=None):
 							hallmark = 4160 common genes \
 							8000 = the 4160 common genes + 3840 random genes \
 							16000 = the 8000 genes above + 8000 random genes')
+	parser.add_argument('--data_dir',type=str, default=DATA_DIR)
 
 
 	####### Model
@@ -808,7 +809,11 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 
+						  'simple_trig_synth', 'simple_linear_synth', 
+        				  'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
+						  'MNIST',
+						]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
