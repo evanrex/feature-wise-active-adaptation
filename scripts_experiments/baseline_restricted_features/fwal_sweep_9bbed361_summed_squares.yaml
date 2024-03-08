@@ -1,0 +1,49 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: 9bbed361_summed_squares
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --restrict_features
+- --as_MLP_baseline
+- --hpc_run
+- --num_workers
+- 31 # optimal for HPC
+- --tags
+- 9bbed361 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "self-supervised learning task to pre-train the reconstruction module using SEFS"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    # - simple_trig_synth
+    - summed_squares_exponential_synth
+    # - trigonometric_polynomial_synth
+
+  metric_model_selection:
+    distribution: categorical
+    values:
+    # - cross_entropy_loss
+    - total_loss
+    # - balanced_accuracy
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+
+  chosen_features_list:
+    distribution: categorical
+    values:
+      - "x1,x2,x3,x4,x5"
+      - "x6"

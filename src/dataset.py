@@ -12,6 +12,9 @@ import scipy.io as spio
 import torchvision
 from sys import exit
 from sklearn.utils.class_weight import compute_class_weight
+from torch.utils.data import DataLoader, random_split, TensorDataset
+import torchvision.transforms as transforms
+import torchvision.datasets as datasets
 
 
 
@@ -356,6 +359,56 @@ def sample_tcga_dataset(args, train_size, valid_size, test_size):
 
 	return sample_dataset(args, dataset, label, train_size, valid_size, test_size)
 
+class MNISTDataModule(pl.LightningDataModule):
+    def __init__(self, args):
+        super().__init__()
+        self.args=args
+        self.batch_size = args.batch_size
+        self.data_dir = args.data_dir
+        # self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+        self.prepare_data()
+        self.setup()
+
+    def prepare_data(self):
+        # Download MNIST dataset
+        datasets.MNIST(self.data_dir, train=True, download=True)
+        datasets.MNIST(self.data_dir, train=False, download=True)
+
+    def setup(self, stage=None):
+        # Transform and load the MNIST training dataset
+        mnist_full = datasets.MNIST(self.data_dir, train=True, 
+                                    # transform=self.transform
+                                    )
+        mnist_test = datasets.MNIST(self.data_dir, train=False, 
+                                    # transform=self.transform
+                                    )
+
+        # Convert to tabular form
+        self.train_dataset, self.val_dataset = self._to_tabular(mnist_full, split_ratio=(1-self.args.valid_percentage))
+        self.test_dataset = self._to_tabular(mnist_test, split_ratio=1.0, is_test=True)
+
+    def _to_tabular(self, dataset, split_ratio, is_test=False):
+        # Convert dataset to tensors
+        X = torch.stack([x[0].view(-1) for x, _ in dataset])
+        y = torch.tensor([y for _, y in dataset])
+
+        if is_test:
+            return TensorDataset(X, y)
+        else:
+            # Split dataset
+            train_size = int(len(dataset) * split_ratio)
+            val_size = len(dataset) - train_size
+            train_dataset, val_dataset = random_split(TensorDataset(X, y), [train_size, val_size])
+            return train_dataset, val_dataset
+
+    def train_dataloader(self):
+        return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True, num_workers=self.args.num_workers)
+
+    def val_dataloader(self):
+        return DataLoader(self.val_dataset, batch_size=self.batch_size, num_workers=self.args.num_workers)
+
+    def test_dataloader(self):
+        return DataLoader(self.test_dataset, batch_size=self.batch_size, num_workers=self.args.num_workers)
 
 class CustomPytorchDataset(Dataset):
 	def __init__(self, X, y, transform=None) -> None:
@@ -716,9 +769,21 @@ def create_data_module(args):
 				X, y = load_summed_squares_exponential_synth()
 			elif dataset=='trigonometric_polynomial_synth':
 				X, y = load_trigonometric_polynomial_synth()
+			
+			if args.restrict_features:
+				if args.chosen_features_list is not None:
+					chosen_features_list = args.chosen_features_list.split(',')
+					X = X[chosen_features_list]
+				else:
+					raise Exception("args error: chosen_feature_list is required for --restrict_features.")
+        
     
 			data_module = create_datamodule_with_cross_validation(args, X, y)
-
+		elif dataset in ['MNIST']:
+			if dataset =='MNIST':
+				# TODO restrict features for MNIST
+				mnist_dm = MNISTDataModule(args)
+      
 	#### Compute classification loss weights
 	if args.class_weight=='balanced':
 		args.class_weights = compute_class_weight(class_weight='balanced', classes=np.unique(data_module.y_train), y=data_module.y_train)

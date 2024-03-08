@@ -3,6 +3,40 @@ from models import compute_all_metrics
 import itertools
 import torch
 
+def evaluate_all_masks(args, model,data_module, wandb_logger):
+    
+    device = next(model.parameters()).device
+    X_valid = torch.tensor(data_module.X_valid, dtype=torch.float32).to(device)
+    X_test = torch.tensor(data_module.X_test, dtype=torch.float32).to(device)
+    
+    for mask in model.masks:
+        model.mask.data = torch.from_numpy(mask).type_as(model.mask.data)
+        
+        y_pred_valid = model.forward(X_valid, test_time=True)[0]
+        y_pred_valid = torch.softmax(y_pred_valid, dim=1).cpu().detach().numpy()
+        y_pred_valid = np.argmax(y_pred_valid, axis=1)
+        
+        y_pred_test = model.forward(X_test, test_time=True)[0]
+        y_pred_test = torch.softmax(y_pred_test, dim=1).cpu().detach().numpy()
+        y_pred_test = np.argmax(y_pred_test, axis=1)
+        
+        valid_metrics = compute_all_metrics(args, data_module.y_valid, y_pred_valid)
+        test_metrics = compute_all_metrics(args, data_module.y_test, y_pred_test)
+
+        # Log the results for this permutation
+        
+        int_list = model.necessary_features().int().tolist()
+        # Convert list of integers to a string of 0s and 1s
+        mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+
+      
+        wandb_logger.log_metrics({
+            'masks/valid_metrics': valid_metrics,
+            'masks/test_metrics': test_metrics,
+            'masks/mask':mask_as_string_of_ones_and_zeros,
+            'masks/mask_probs': model.mask.data
+        })
+
 def evaluate_test_time_interventions(model, data_module, args, wandb_logger):
     necessary_features = model.necessary_features(k=0)
     

@@ -85,41 +85,41 @@ def create_model(args, data_module):
 		model = FWAL(args)
 		return model
 	
-	### create embedding matrices
-	wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
-	if args.wpn_embedding_type==args.sparsity_gene_embedding_type and args.wpn_embedding_size==args.sparsity_gene_embedding_size:
-		spn_embedding_matrix = wpn_embedding_matrix
-	else:
-		spn_embedding_matrix = data_module.get_embedding_matrix(args.sparsity_gene_embedding_type, args.sparsity_gene_embedding_size)
+	# ### create embedding matrices
+	# wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
+	# if args.wpn_embedding_type==args.sparsity_gene_embedding_type and args.wpn_embedding_size==args.sparsity_gene_embedding_size:
+	# 	spn_embedding_matrix = wpn_embedding_matrix
+	# else:
+	# 	spn_embedding_matrix = data_module.get_embedding_matrix(args.sparsity_gene_embedding_type, args.sparsity_gene_embedding_size)
 
-	### create decoder
-	if args.gamma > 0:
-		wpn_decoder = WeightPredictorNetwork(args, wpn_embedding_matrix)
-		decoder = Decoder(args, wpn_decoder)
-	else:
-		decoder = None
+	# ### create decoder
+	# if args.gamma > 0:
+	# 	wpn_decoder = WeightPredictorNetwork(args, wpn_embedding_matrix)
+	# 	decoder = Decoder(args, wpn_decoder)
+	# else:
+	# 	decoder = None
 
-	### create models
-	if args.model=='fsnet':
-		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0], is_diet_layer=True, wpn_embedding_matrix=wpn_embedding_matrix)
+	# ### create models
+	# if args.model=='fsnet':
+	# 	concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0], is_diet_layer=True, wpn_embedding_matrix=wpn_embedding_matrix)
 
-		model = DNN(args, concrete_layer, decoder)
+	# 	model = DNN(args, concrete_layer, decoder)
 
 	elif args.model=='cae': # Supervised Autoencoder
 		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0])
 
 		model = DNN(args, concrete_layer, None)
 
-	elif args.model in ['dnn', 'dietdnn']:
-		if args.model=='dnn':
-			is_diet_layer = False
-		else: # args.model=='dietdnn':
-			is_diet_layer = True
+	# elif args.model in ['dnn', 'dietdnn']:
+	# 	if args.model=='dnn':
+	# 		is_diet_layer = False
+	# 	else: # args.model=='dietdnn':
+	# 		is_diet_layer = True
 		
-		first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
-						wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
+	# 	first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
+	# 					wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
 
-		model = DNN(args, first_layer, decoder)
+	# 	model = DNN(args, first_layer, decoder)
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 
@@ -475,6 +475,9 @@ class TrainingLightningModule(pl.LightningModule):
 				losses['sparsity'] = self.args.sparsity_regularizer_hyperparam * hoyer_reg
 			else:
 				raise Exception("Sparsity regularizer not valid")
+
+			if self.args.normalize_sparsity:
+				losses['sparsity'] = (1/len(sparsity_weights)) * losses['sparsity']
 		
 		if self.args.as_MLP_baseline:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
@@ -484,6 +487,19 @@ class TrainingLightningModule(pl.LightningModule):
 		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity']
 		
 		return losses
+	
+    ### DEFINE SELF-SUPERVISED LOSS FUNCTION
+	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
+		losses = {}
+		losses['pre_reconstruction'] = F.mse_loss(x_pred, x_true, reduction='mean')
+		losses['pre_cross_entropy'] = F.binary_cross_entropy_with_logits(mask_pred, mask_true)
+		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_cross_entropy']
+		return losses
+
+	def log_pre_losses(self, losses, key, dataloader_name=""):
+		self.log(f"{key}/pre_total_loss{dataloader_name}", losses['pre_total'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/pre_reconstruction_loss{dataloader_name}", losses['pre_reconstruction'].item(), sync_dist=self.args.hpc_run)
+		self.log(f"{key}/pre_cross_entropy_loss{dataloader_name}", losses['pre_cross_entropy'].item(), sync_dist=self.args.hpc_run)
 
 	def log_losses(self, losses, key, dataloader_name=""):
 		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
@@ -493,15 +509,38 @@ class TrainingLightningModule(pl.LightningModule):
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
-		self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
+		if not self.args.pretrain:
+			self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 		if self.args.num_classes==2:
 			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
 
+	def pre_training_step(self, batch, batch_idx):
+		x, y_true = batch
+	
+		x_pred, mask, mask_pred = self.pre_forward(x)
+
+		losses = self.pre_loss(x, x_pred, mask, mask_pred)
+
+		self.log_pre_losses(losses, key='pre_train')
+
+		
+		outputs = {
+			'loss': losses['pre_total'],
+			'losses': detach_tensors(losses),
+			'y_true': mask,
+			'y_pred': (mask_pred>0).float()
+		}
+		self.training_step_outputs.append(outputs)
+		return outputs
+	
 	def training_step(self, batch, batch_idx):
 		x, y_true = batch
+
+		if self.args.pretrain:
+			return self.pre_training_step(batch, batch_idx)
 	
 		y_hat, x_hat, sparsity_weights = self.forward(x)
 
@@ -513,6 +552,8 @@ class TrainingLightningModule(pl.LightningModule):
 		# log temperature of the concrete distribution
 		if isinstance(self.first_layer, ConcreteLayer):
 			self.log("train/concrete_temperature", self.first_layer.get_temperature())
+		else:
+			self.log("train/gumbel_temperature", self.get_temperature())
 		outputs = {
 			'loss': losses['total'],
 			'losses': detach_tensors(losses),
@@ -523,14 +564,44 @@ class TrainingLightningModule(pl.LightningModule):
 		return outputs
 
 	def on_train_epoch_end(self):
-		self.log_epoch_metrics(self.training_step_outputs, 'train')
+		if self.args.pretrain:
+			self.log_epoch_metrics(self.training_step_outputs, 'pre_train')
+		else:
+			self.log_epoch_metrics(self.training_step_outputs, 'train')
 		self.training_step_outputs.clear()  # free memory
+
+	def pre_validation_step(self, batch, batch_idx, dataloader_idx=0):
+		x, y_true = reshape_batch(batch)
+
+		x_pred, mask, mask_pred = self.pre_forward(x)
+
+		losses = self.pre_loss(x, x_pred, mask, mask_pred)
+
+		self.log_pre_losses(losses, key='pre_valid')
+		
+		output = {
+			'losses': detach_tensors(losses),
+			'y_true': mask,
+			'y_pred': (mask_pred>0).float()
+		}
+		
+		while len(self.validation_step_outputs) <= dataloader_idx:
+			self.validation_step_outputs.append([])
+   
+		self.validation_step_outputs[dataloader_idx].append(output)
+		return output
 
 	def validation_step(self, batch, batch_idx, dataloader_idx=0):
 		"""
 		- dataloader_idx (int) tells which dataloader is the `batch` coming from
 		"""
+
+		if self.args.pretrain:
+			return self.pre_validation_step(batch, batch_idx, dataloader_idx)
+		
 		x, y_true = reshape_batch(batch)
+
+
 		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
@@ -558,19 +629,40 @@ class TrainingLightningModule(pl.LightningModule):
 		outputs_all_dataloaders = self.validation_step_outputs
 
 		for dataloader_id, outputs in enumerate(outputs_all_dataloaders):
-			losses = {
-				'total': np.mean([output['losses']['total'].item() for output in outputs]),
-				'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
-				'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
-				'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
-			}
-			if dataloader_id==0: # original validation dataset
-				dataloader_name=""
-			else:
-				dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
+			
+			if self.args.pretrain:
+				
+				losses = {
+					'pre_total': np.mean([output['losses']['pre_total'].item() for output in outputs]),
+					'pre_reconstruction': np.mean([output['losses']['pre_reconstruction'].item() for output in outputs]),
+					'pre_cross_entropy': np.mean([output['losses']['pre_cross_entropy'].item() for output in outputs]),
+				}
+				if dataloader_id==0: # original validation dataset
+					dataloader_name=""
+				else:
+					dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
 
-			self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
-			self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
+				self.log_pre_losses(losses, key='pre_valid', dataloader_name=dataloader_name)
+				self.log_epoch_metrics(outputs, key='pre_valid', dataloader_name=dataloader_name)
+			else:
+
+				losses = {
+					'total': np.mean([output['losses']['total'].item() for output in outputs]),
+					'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
+					'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
+					'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
+				}
+				if dataloader_id==0: # original validation dataset
+					dataloader_name=""
+				else:
+					dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
+
+				self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
+				self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
+
+				if self.args.model =='fwal':
+					self.masks.append(self.mask.data.cpu().numpy().copy())
+     
 		self.validation_step_outputs.clear()
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
@@ -622,11 +714,7 @@ class TrainingLightningModule(pl.LightningModule):
 			
 		# 	global_feature_importance = wandb.Table(dataframe=pd.DataFrame(feature_importance))
 		# 	wandb.log({f'{self.log_test_key}_global_feature_importance': global_feature_importance})
-
-	def on_train_end(self):
-		'''logs mask parameters to wandb'''
-		wandb.log({"best_mask_parameters": self.mask.data})
-  
+	
 	def configure_optimizers(self):
 		params = self.parameters()
 
@@ -740,125 +828,185 @@ class DNN(TrainingLightningModule):
 		return y_hat, x_hat, sparsity_weights
 
 class FWAL(TrainingLightningModule):
-    def __init__(self, args):
-        super().__init__(args)
-        self.args = args
-        self.log_test_key = None
-        self.learning_rate = args.lr
-        
-        if self.args.mask_init_value is None:
-            mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
-            self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
-        else:
-            self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)
-        
-        self.decoder=True
-        self.first_layer = None
-        
+	def __init__(self, args):
+		super().__init__(args)
+		self.args = args
+		self.log_test_key = None
+		self.learning_rate = args.lr
+		self.temp_start = 10
+		self.temp_end = 0.01
+		# the iteration is used in annealing the temperature
+		# 	it's increased with every call to sample during training
+		self.current_iteration = 0 
+		self.anneal_iterations = args.concrete_anneal_iterations 
+		self.masks = []
+
+		if self.args.mask_init_value is not None:
+			self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)  
+		elif args.mask_init_p_array is not None:
+			probabilities = torch.Tensor([float(x) for x in args.mask_init_p_array.split(',')])
+			logits = torch.log(probabilities / (1 - probabilities))
+			self.mask = nn.Parameter(logits, requires_grad=True)
+		else:
+			mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+			self.mask = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+
+   
+		self.decoder=True
+		self.first_layer = None
+
 		# Reconstruction Module: 5 layers with 50 neurons each
-        self.reconstruction_module = nn.Sequential(
-            nn.Linear(args.num_features, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, args.num_features)  # Last layer outputs num_features
-        )
-
-        # Prediction Module: 5 layers with 50 neurons each
-        self.prediction_module = nn.Sequential(
-            nn.Linear(args.num_features, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, 50),
-            nn.ReLU(),
-            nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
-        )
-    
-    def mask_module(self, x):
-        # constructing sparsity weights from mask module
-        if self.args.as_MLP_baseline:
-            return x, torch.ones_like(x)
-        if self.args.mask_type == "sigmoid":
-            sparsity_weights = torch.sigmoid(self.mask)
-        elif self.args.mask_type == "gumbel_softmax":
-            sparsity_weights = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), hard=True)[:,0]
-        else:
-            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-            
-        return x * sparsity_weights, sparsity_weights
+		self.reconstruction_module = nn.Sequential(
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_features)  # Last layer outputs num_features
+		)
         
+        # define weights for pre-training task
+		self.mask_predictor_module = nn.Sequential( 
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_features)  # Last layer outputs num_features
+		)
 
-    def forward(self, x, test_time=False):
-        """
-        Forward pass for training
-        """
-        if test_time:
-            sparsity_weights = self.necessary_features()
-            masked_x = x * sparsity_weights
-        else:
-            masked_x, sparsity_weights = self.mask_module(x)
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = nn.Sequential(
+			nn.Linear(args.num_features, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, 50),
+			nn.ReLU(),
+			nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
+		)
+    
+	def mask_module(self, x, test_time=False):
+		# constructing sparsity weights from mask module
+		if self.args.as_MLP_baseline:
+			return x, torch.ones_like(x), torch.ones_like(x)
+		if self.args.mask_type == "sigmoid":
+			sparsity_weights = torch.sigmoid(self.mask)
+		elif self.args.mask_type == "gumbel_softmax":
+			if test_time:
+				sparsity_weights = (self.mask>0).float()
+				sparsity_weights_probs = torch.sigmoid(self.mask)
+			else:
+				if self.training:
+					self.current_iteration += 1
+				temperature = self.get_temperature()
+				soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=False, dim=-1)
+				_, max_indices = soft_outputs.max(dim=-1, keepdim=True)
+				hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:,0]
+				soft_outputs=soft_outputs[:,0]
+				sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
+				sparsity_weights_probs = soft_outputs
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+			
+		return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
+
+	def get_temperature(self):
+		# compute temperature		
+		if self.current_iteration >= self.anneal_iterations:
+			return self.temp_end
+		else:
+			return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
 		
-        reconstructed_x = self.reconstruction_module(masked_x)
-        
-        prediction = self.prediction_module(reconstructed_x)
+	def pre_forward(self, x):
+		# Ensure pi is a tensor and has the shape compatible with x's features
+		pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
+		
+		# Sample from the multivariate Bernoulli distribution
+		mask = torch.bernoulli(pi_tensor)
+		
+		# Select the features based on the mask
+		masked_x = x * mask
+		
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		mask_pred = self.mask_predictor_module(reconstructed_x)
+		
+		return reconstructed_x, mask, mask_pred
+    
+	def forward(self, x, test_time=False):
+		"""
+		Forward pass for training
+		"""
 
-        reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
-        
-        return prediction, reconstructed_x, sparsity_weights
+		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time)
+		
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		prediction = self.prediction_module(reconstructed_x)
+
+		reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
+		
+		return prediction, reconstructed_x, sparsity_weights_probs
     
-    def necessary_features(self, k=None):
-        """
-        k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
-        Returns a boolean mask for which features are deemed necessary and which are not.
-        """
-        
-        if self.args.as_MLP_baseline:
-            return torch.ones_like(self.mask)
-        
-        if k == None:
-            k = self.args.num_necessary_features
-        if self.args.mask_type == "sigmoid":
-            sigmoid_mask = torch.sigmoid(self.mask)
-            _, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
-            boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
-            boolean_mask[indices] = True  # Set the top k indices to True
-            return boolean_mask
-        elif self.args.mask_type =="gumbel_softmax":
-            return self.mask > 0
-        else:
-            raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-        
-    def inference(self, x):
-        """
-        Performs inference with test-time interventions
-        """
-        x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
-    
-        # Step 1: Replace None (or equivalent) values with 0
-        # Assuming x is a tensor and None values are represented as NaNs
-        original_x = x.clone()  # Keep a copy of the original x for later
-        x = torch.nan_to_num(x, nan=0.0)
-        
-        masked_x, sparsity_weights = self.mask_module(x)
-        
-        # Step 2: Reconstruction as in the original forward pass
-        reconstructed_x = self.reconstruction_module(masked_x)
-        
-        # Step 3: Replace reconstructed values with original non-None values
-        # Assuming None values were NaN and were replaced with 0 in original_x
-        mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
-        reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
-        
-        # Return the reconstructed_x and prediction
-        prediction = self.prediction_module(reconstructed_x)
-        
-        prediction = torch.softmax(prediction, dim=1)
-        
-        return prediction
+	def necessary_features(self, k=None):
+		"""
+		k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
+		Returns a boolean mask for which features are deemed necessary and which are not.
+		"""
+		
+		if self.args.as_MLP_baseline:
+			return torch.ones_like(self.mask)
+		
+		if k == None:
+			k = self.args.num_necessary_features
+		if self.args.mask_type == "sigmoid":
+			sigmoid_mask = torch.sigmoid(self.mask)
+			_, indices = torch.topk(sigmoid_mask, k)  # Get the indices of the top k values
+			boolean_mask = torch.full_like(sigmoid_mask, False, dtype=torch.bool)  # Create a boolean mask initialized to False
+			boolean_mask[indices] = True  # Set the top k indices to True
+			return boolean_mask
+		elif self.args.mask_type =="gumbel_softmax":
+			return self.mask > 0
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+
+	def finish_pretraining(self):
+		self.current_iteration = 0
+			
+	def inference(self, x):
+		"""
+		Performs inference with test-time interventions
+		"""
+		x = torch.tensor(x, dtype=torch.float32) if not isinstance(x, torch.Tensor) else x
+
+		# Step 1: Replace None (or equivalent) values with 0
+		# Assuming x is a tensor and None values are represented as NaNs
+		original_x = x.clone()  # Keep a copy of the original x for later
+		x = torch.nan_to_num(x, nan=0.0)
+		
+		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=True)
+		
+		# Step 2: Reconstruction as in the original forward pass
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		# Step 3: Replace reconstructed values with original non-None values
+		# Assuming None values were NaN and were replaced with 0 in original_x
+		mask_non_none = ~torch.isnan(original_x)  # True for non-None original values
+		reconstructed_x = torch.where(mask_non_none, original_x, reconstructed_x)
+		
+		# Return the reconstructed_x and prediction
+		prediction = self.prediction_module(reconstructed_x)
+		
+		prediction = torch.softmax(prediction, dim=1)
+		
+		return prediction
+

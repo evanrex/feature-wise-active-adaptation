@@ -63,6 +63,45 @@ def create_wandb_logger(args):
 
 	return wandb_logger
 
+class CustomEarlyStopping(EarlyStopping):
+    def __init__(self, pretrain_epochs, **kwargs):
+        super().__init__(**kwargs)
+        self.pretrain_epochs = pretrain_epochs
+
+    def on_validation_end(self, trainer, pl_module):
+        '''
+		Only activates once the pre-training is over
+        '''
+        # Check if the current epoch is less than pretrain_epochs
+        if trainer.current_epoch < self.pretrain_epochs:
+            # Skip the early stopping check
+            return
+        # Otherwise, proceed with the normal early stopping logic
+        super().on_validation_end(trainer, pl_module)
+
+
+class CustomModelCheckpoint(ModelCheckpoint):
+    def __init__(self, pretrain_epochs, **kwargs):
+        super().__init__(**kwargs)
+        self.num_pretrain_epochs = pretrain_epochs
+
+    def on_validation_end(self, trainer, pl_module):
+        # Override to skip checkpointing if the current epoch is less than num_pretrain_epochs
+        if trainer.current_epoch < self.num_pretrain_epochs:
+            return
+        # Call the superclass method to continue normal operation
+        super().on_validation_end(trainer, pl_module)
+
+    def _save_model(self, trainer, filepath):
+        # This method is called to save the model. You might need to handle the case
+        # where the monitored metric is missing. This is just a placeholder implementation.
+        # The real implementation might need adjustments based on your specific requirements.
+        metrics = trainer.callback_metrics
+        if self.monitor not in metrics and trainer.current_epoch < self.num_pretrain_epochs:
+            # Skip saving if the monitored metric is missing during pretraining
+            return
+        super()._save_model(trainer, filepath)
+
 
 def run_experiment(args):
 	args.suffix_wand_run_name = f"repeat-{args.repeat_id}__test-{args.test_split}"
@@ -213,11 +252,18 @@ def run_experiment(args):
 
 		args.num_tasks = args.feature_extractor_dims[-1] 			# number of output units of the feature extractor. Used for convenience when defining the GP
 
-		
+				
+		if args.pretrain and (args.num_pretrain_steps!=-1):
+			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
+			steps_per_epoch = np.floor(args.train_size / args.batch_size)
+			args.max_pretrain_epochs = int(np.ceil((args.num_pretrain_steps) / steps_per_epoch)) 
+			print(f"Pre-Training for max_pretrain_epochs = {args.max_pretrain_epochs}")
+
+
 		if args.max_steps!=-1:
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
-			args.max_epochs = int(np.ceil(args.max_steps / steps_per_epoch))
+			args.max_epochs = int(np.ceil((args.max_steps) / steps_per_epoch)) 
 			print(f"Training for max_epochs = {args.max_epochs}")
 
 
@@ -244,7 +290,14 @@ def run_experiment(args):
 			#### Create model
 			model = create_model(args, data_module)
 
-			trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
+			if args.pretrain:
+				pretrainer,pre_checkpoint_callback = pre_train_model(args, model, data_module, wandb_logger)
+				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger, pre_trained_ckpt=pre_checkpoint_callback.best_model_path)
+			else:
+				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
+			
+			if args.evaluate_all_masks:
+				evaluate_all_masks(args, model,data_module, wandb_logger)
 
 			if args.test_time_interventions == "evaluate_test_time_interventions":
 				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
@@ -258,6 +311,8 @@ def run_experiment(args):
 
 				print(f"\n\nBest model saved on path {checkpoint_path}\n\n")
 				wandb.log({"bestmodel/step": checkpoint_path.split("step=")[1].split('.ckpt')[0]})
+			
+
 
 			#### Compute metrics for the best model
 			model.log_test_key = 'bestmodel_train'
@@ -269,12 +324,98 @@ def run_experiment(args):
 			model.log_test_key = 'bestmodel_test'
 			trainer.test(model, dataloaders=data_module.test_dataloader(), ckpt_path=checkpoint_path)
 
-	
+			if args.model =='fwal':
+				checkpoint = torch.load(checkpoint_path)
+				model.load_state_dict(checkpoint['state_dict'])
+				# Convert boolean tensor to tensor of 0s and 1s
+				int_list = model.necessary_features().int().tolist()
+				# Convert list of integers to a string of 0s and 1s
+				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+
+				wandb.log({"best_mask_parameters": model.mask.data})
+				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+				wandb_logger.log_metrics({
+					'best_mask': mask_as_string_of_ones_and_zeros,
+					'best_mask_parameters': model.mask.data
+				})
 	wandb.finish()
 
 	print("\nExiting from train function..")
+
 	
-def train_model(args, model, data_module, wandb_logger=None):
+def pre_train_model(args, model, data_module, wandb_logger=None):
+	"""
+	Return 
+	- Pytorch Lightening Trainer
+	- checkpoint callback
+	"""
+
+	##### Train
+	if args.saved_checkpoint_name:
+		wandb_artifact_path = f'andreimargeloiu/low-data/{args.saved_checkpoint_name}'
+		print(f"\nDownloading artifact: {wandb_artifact_path}...")
+
+		artifact = wandb.use_artifact(wandb_artifact_path, type='model')
+		artifact_dir = artifact.download()
+		model_checkpoint = torch.load(os.path.join(artifact_dir, 'model.ckpt'))
+		weights = model_checkpoint['state_dict']
+		print("Artifact downloaded")
+
+		if args.load_model_weights:
+			print(f"\nLoading pretrained weights into model...")
+			missing_keys, unexpected_keys = model.load_state_dict(weights, strict=False)
+			print(f"Missing keys: \n")
+			print(missing_keys)
+
+			print(f"Unexpected keys: \n")
+			print(unexpected_keys)
+
+	mode_metric = 'max' if args.pretrain_metric_model_selection=='balanced_accuracy' else 'min'
+	checkpoint_callback = ModelCheckpoint(
+		monitor=f'pre_valid/{args.pretrain_metric_model_selection}',
+		mode=mode_metric,
+		save_last=True,
+		verbose=True
+	)
+	callbacks = [checkpoint_callback, RichProgressBar()]
+
+	if args.pretrain_patience_early_stopping and args.train_on_full_data==False:
+		callbacks.append(EarlyStopping(
+			monitor=f'pre_valid/{args.pretrain_metric_model_selection}',
+			mode=mode_metric,
+			patience=args.pretrain_patience_early_stopping,
+		))
+	callbacks.append(LearningRateMonitor(logging_interval='step'))
+
+	pl.seed_everything(args.seed_training, workers=True)
+	trainer = pl.Trainer(
+		# Training
+		max_steps=args.num_pretrain_steps,
+		gradient_clip_val=2.5,
+
+		# logging
+		logger=wandb_logger,
+		log_every_n_steps = 1,
+		val_check_interval = args.val_check_interval,
+		callbacks = callbacks,
+
+		# miscellaneous
+		accelerator="auto",
+		devices="auto",
+		detect_anomaly= (not args.hpc_run),
+		overfit_batches=args.overfit_batches,
+		deterministic=args.deterministic,
+	)
+	# train
+	trainer.fit(model, data_module)
+	args.pretrain = False # update flag so future training is normal and not pretraining
+	model.finish_pretraining()
+	
+	return trainer, checkpoint_callback
+
+
+
+def train_model(args, model, data_module, wandb_logger=None, pre_trained_ckpt=None):
 	"""
 	Return 
 	- Pytorch Lightening Trainer
@@ -368,10 +509,11 @@ def parse_arguments(args=None):
 							hallmark = 4160 common genes \
 							8000 = the 4160 common genes + 3840 random genes \
 							16000 = the 8000 genes above + 8000 random genes')
+	parser.add_argument('--data_dir',type=str, default=DATA_DIR)
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='dnn')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
 						help='layer size for the feature extractor. If using a virtual layer,\
 							  the first dimension must match it.')
@@ -384,7 +526,7 @@ def parse_arguments(args=None):
 
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
-	parser.add_argument('--gamma', type=float, default=0, 
+	parser.add_argument('--gamma', type=float, default=1.0, 
 						help='The factor multiplied to the reconstruction error. \
 							  If >0, then create a decoder with a reconstruction loss. \
 							  If ==0, then dont create a decoder.')
@@ -411,7 +553,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--lassonet_M', type=float, default=10)
 
 	####### Sparsity
-	parser.add_argument('--sparsity_type', type=str, default=None,
+	parser.add_argument('--sparsity_type', type=str, default='global',
 						choices=['global', 'local'], help="Use global or local sparsity")
 	parser.add_argument('--sparsity_method', type=str, default='sparsity_network',
 						choices=['learnable_vector', 'sparsity_network'], help="The method to induce sparsity")
@@ -423,10 +565,11 @@ def parse_arguments(args=None):
 	parser.add_argument('--sparsity_gene_embedding_size', type=int, default=50)
 	parser.add_argument('--sparsity_regularizer', type=str, default='L1',
 						choices=['L1', 'hoyer'])
-	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=0,
+	parser.add_argument('--sparsity_regularizer_hyperparam', type=float, default=1.0,
 						help='The weight of the sparsity regularizer (used to compute total_loss)')
 	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
 						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
+	parser.add_argument('--normalize_sparsity', action='store_true', dest='normalize_sparsity', help='If true, divide sparsity lsos by number of features')
 
 
 	####### DKL
@@ -462,7 +605,7 @@ def parse_arguments(args=None):
 
 	parser.add_argument('--max_steps', type=int, default=10000, help='Specify the max number of steps to train.')
 	parser.add_argument('--lr', type=float, default=3e-3, help='Learning rate')
-	parser.add_argument('--batch_size', type=int, default=8)
+	parser.add_argument('--batch_size', type=int, default=128)
 
 	parser.add_argument('--patient_preprocessing', type=str, default='standard',
 						choices=['raw', 'standard', 'minmax'],
@@ -471,6 +614,15 @@ def parse_arguments(args=None):
 						choices=['raw', 'standard', 'minmax'],
 						help='Preprocessing applied on each ROW of the D x N matrix, where a row contains all patient expressions for one gene.')
 
+	####### Self-supervised pre-training
+	parser.add_argument('--pretrain', action='store_true', dest='pretrain', \
+						help='Boolean, whether to perform the SEFS self-supervised pretraining')
+	parser.add_argument('--num_pretrain_steps', type=int, default=0,
+		help='number of steps to pre-train the model with the SEFS self-supervision task')
+	parser.add_argument('--pre_alpha', type=float, default=1,
+		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
+	parser.add_argument('--pre_pi', type=float, default=0.5,
+		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
 	
 	####### Training on the entire train + validation data
 	parser.add_argument('--train_on_full_data', action='store_true', dest='train_on_full_data', \
@@ -482,13 +634,17 @@ def parse_arguments(args=None):
 
 
 	####### Validation
-	parser.add_argument('--metric_model_selection', type=str, default='cross_entropy_loss',
+	parser.add_argument('--metric_model_selection', type=str, default='total_loss',
 						choices=['cross_entropy_loss', 'total_loss', 'balanced_accuracy'])
-
-	parser.add_argument('--patience_early_stopping', type=int, default=200,
+	parser.add_argument('--pretrain_metric_model_selection', type=str, default='pre_total_loss',
+						choices=['pre_cross_entropy_loss', 'pre_total_loss', 'pre_reconstruction_loss'])
+	parser.add_argument('--patience_early_stopping', type=int, default=50,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 							 It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
-	parser.add_argument('--val_check_interval', type=int, default=5, 
+	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=5,
+						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
+							 It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
+	parser.add_argument('--val_check_interval', type=int, default=10, 
 						help='number of steps at which to check the validation')
 
 	# type of data augmentation
@@ -499,6 +655,8 @@ def parse_arguments(args=None):
 							  in addition to the standard validation")
 	parser.add_argument('--valid_aug_times', type=int, nargs="+",
 						help="Number time to perform data augmentation on the validation sample.")
+	parser.add_argument('--restrict_features', action='store_true', dest='restrict_features')
+	parser.add_argument('--chosen_features_list', dest='chosen_features_list', type=str, required=False, help='The list is a comma-separated string. Required if --restrict_features. e.g.: "x1,x3,x4"')
 
 
 	####### Testing
@@ -512,7 +670,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--repeat_id', type=int, default=0, help='each repeat_id gives a different random seed for shuffling the dataset')
 	parser.add_argument('--cv_folds', type=int, default=5, help="Number of CV splits")
 	parser.add_argument('--test_split', type=int, default=0, help="Index of the test split. It should be smaller than `cv_folds`")
-	parser.add_argument('--valid_percentage', type=float, default=0.1, help='Percentage of training data used for validation')
+	parser.add_argument('--valid_percentage', type=float, default=0.25, help='Percentage of training data used for validation')
 							  
 
 	####### Evaluation by taking random samples (with user-defined train/valid/test sizes) from the dataset
@@ -529,10 +687,11 @@ def parse_arguments(args=None):
 	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
 	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
+	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')
-	parser.add_argument('--lr_scheduler', type=str, choices=['plateau', 'cosine_warm_restart', 'linear', 'lambda'], default='lambda')
+	parser.add_argument('--lr_scheduler', type=str, choices=['plateau', 'cosine_warm_restart', 'linear', 'lambda'], default=None)
 	parser.add_argument('--cosine_warm_restart_eta_min', type=float, default=1e-6)
 	parser.add_argument('--cosine_warm_restart_t_0', type=int, default=35)
 	parser.add_argument('--cosine_warm_restart_t_mult', type=float, default=1)
@@ -554,9 +713,10 @@ def parse_arguments(args=None):
 
 	# SEEDS
 	parser.add_argument('--seed_model_init', type=int, default=42, help='Seed for initializing the model (to have the same weights)')
-	parser.add_argument('--seed_model_mask', type=int, default=42, help='Seed for initializing the model mask (to have the same weights)')
+	parser.add_argument('--seed_model_mask', type=int, default=None, help='Seed for initializing the model mask (to have the same weights)')
 	parser.add_argument('--mask_init_value', type=int, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation.')
 	parser.add_argument('--seed_training', type=int, default=42, help='Seed for training (e.g., batch ordering)')
+	parser.add_argument('--mask_init_p_array', type=str, default=None, help='Value for deterministic initialisation of the model mask. default=None for random initialisation. expects string list of probabilities: e.g.: "0.1,0.99,0,1" ')
 
 	parser.add_argument('--seed_kfold', type=int, help='Seed used for doing the kfold in train/test split')
 	parser.add_argument('--seed_validation', type=int, help='Seed used for selecting the validation split.')
@@ -649,7 +809,11 @@ if __name__ == "__main__":
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
 						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']
+						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 
+						  'simple_trig_synth', 'simple_linear_synth', 
+        				  'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
+						  'MNIST',
+						]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
