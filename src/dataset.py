@@ -418,7 +418,6 @@ class MNISTDataModule(pl.LightningDataModule):
         super().__init__()
         self.args=args
         self.batch_size = args.batch_size
-        self.args.data_dir = args.args.data_dir
         # self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         self.prepare_data()
         self.setup()
