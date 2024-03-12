@@ -458,11 +458,16 @@ class TrainingLightningModule(pl.LightningModule):
 		self.test_step_outputs = []
 		self.args = args
 		self.learning_rate = args.lr
+  
+		if args.reconstruction_loss == "mse":
+			self.reconstruction_loss = F.mse_loss
+		elif args.reconstruction_loss == "bce":
+			self.reconstruction_loss = F.binary_cross_entropy
 
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
 		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
-		losses['reconstruction'] = self.args.gamma * F.mse_loss(x_hat, x, reduction='mean') if self.decoder else torch.zeros(1, device=self.device)
+		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='mean') if self.decoder else torch.zeros(1, device=self.device)
 
 		### sparsity loss
 		if sparsity_weights is None:
@@ -491,7 +496,7 @@ class TrainingLightningModule(pl.LightningModule):
     ### DEFINE SELF-SUPERVISED LOSS FUNCTION
 	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
 		losses = {}
-		losses['pre_reconstruction'] = F.mse_loss(x_pred, x_true, reduction='mean')
+		losses['pre_reconstruction'] = self.reconstruction_loss(x_pred, x_true, reduction='mean')
 		losses['pre_cross_entropy'] = F.binary_cross_entropy_with_logits(mask_pred, mask_true)
 		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_cross_entropy']
 		return losses

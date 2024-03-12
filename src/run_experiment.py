@@ -807,13 +807,15 @@ if __name__ == "__main__":
 
 
 	#### Assert that the dataset is supported
-	SUPPORTED_DATASETS = ['metabric-pam50', 'metabric-dr',
-						  'tcga-2ysurvival', 'tcga-tumor-grade',
-						  'lung', 'prostate', 'toxicity', 'cll', 'smk', 
-						  'simple_trig_synth', 'simple_linear_synth', 
-        				  'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
-						  'MNIST',
-						]
+	SUPPORTED_DATASETS = [
+		'metabric-pam50', 'metabric-dr',
+		'tcga-2ysurvival', 'tcga-tumor-grade',
+		'lung', 'prostate', 'toxicity', 'cll', 'smk', 
+		'simple_trig_synth', 'simple_linear_synth', 'poly_binarised_decimalised_mod10_synth',
+		'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
+		'MNIST',
+		'mice_protein'
+	]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
 
@@ -918,6 +920,10 @@ if __name__ == "__main__":
 
 	if args.disable_wandb:
 		os.environ['WANDB_MODE'] = 'disabled'
-
+  
+	if args.dataset == 'MNIST':
+		args.reconstruction_loss = "bce" # binary cross entropy
+	else:
+		args.reconstruction_loss = "mse" # mean squared error
 
 	run_experiment(args)

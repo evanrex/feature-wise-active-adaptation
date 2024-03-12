@@ -10,6 +10,7 @@ low_data_samples/*
 __pycache__/
 *.py[cod]
 logs/
+data/GEO/
 fwal/
 notebooks/expressiosMB_filtered.csv
 data/Metabric_full/MOLECULARDATA

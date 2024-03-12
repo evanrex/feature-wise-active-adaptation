@@ -30,7 +30,7 @@ def load_csv_data(path, labels_column=-1):
 
 	return X, y
 
-def load_cohort(cohort_id, filter_genes, label_column_name='ClaudinSubtype'):
+def load_cohort(args, cohort_id, filter_genes, label_column_name='ClaudinSubtype'):
 	"""
 	Return the cohort `cohort_id`
 
@@ -38,13 +38,13 @@ def load_cohort(cohort_id, filter_genes, label_column_name='ClaudinSubtype'):
 	:param filter_genes (bool): If `True`, return the intersection with the genes from `imp_genes_list.csv`
 	:param label_column_name (string): The name of the label column in the dataframes
 	"""
-	data = pd.read_csv(os.path.join(DATA_DIR, f'metabric_sample85_{cohort_id}.csv'), index_col=0)
+	data = pd.read_csv(os.path.join(args.data_dir, f'metabric_sample85_{cohort_id}.csv'), index_col=0)
 	
 	X = data.drop(columns=data.columns[:27])
 	y = data[label_column_name]
 	
 	if filter_genes:
-		genes_to_filter = pd.read_csv(os.path.join(DATA_DIR, f'imp_genes_list.csv'))
+		genes_to_filter = pd.read_csv(os.path.join(args.data_dir, f'imp_genes_list.csv'))
 
 		X = X.drop(columns=list(set.difference(set(X.columns), set(genes_to_filter['gene']))))
 
@@ -126,7 +126,7 @@ def load_pam50_cohort(cohort_id, filter_genes=True):
 	return X_mrna, X_cna, y
 
 
-def load_lung(drop_class_5=True):
+def load_lung(args, drop_class_5=True):
 	"""
 	Labels in initial dataset:
 	1    139
@@ -137,7 +137,7 @@ def load_lung(drop_class_5=True):
 
 	We drop the class 5 because it has too little examples.
 	"""
-	data = spio.loadmat(f'{DATA_DIR}/lung.mat')
+	data = spio.loadmat(f'{args.data_dir}/lung.mat')
 	X = pd.DataFrame(data['X'])
 	Y = pd.Series(data['Y'][:, 0])
 
@@ -151,13 +151,13 @@ def load_lung(drop_class_5=True):
 
 	return X, Y
 
-def load_prostate():
+def load_prostate(args):
 	""""
 	Labels in initial dataset:
 	1    50
 	2    52
 	"""
-	data = spio.loadmat(f'{DATA_DIR}/Prostate_GE.mat')
+	data = spio.loadmat(f'{args.data_dir}/Prostate_GE.mat')
 	X = pd.DataFrame(data['X'])
 	Y = pd.Series(data['Y'][:, 0])
 
@@ -166,7 +166,7 @@ def load_prostate():
 
 	return X, Y
 
-def load_toxicity():
+def load_toxicity(args):
 	"""
 	Labels in initial dataset:
 	1    45
@@ -174,7 +174,7 @@ def load_toxicity():
 	3    39
 	4    42
 	"""
-	data = spio.loadmat(f'{DATA_DIR}/TOX_171.mat')
+	data = spio.loadmat(f'{args.data_dir}/TOX_171.mat')
 	X = pd.DataFrame(data['X'])
 	Y = pd.Series(data['Y'][:, 0])
 
@@ -183,14 +183,14 @@ def load_toxicity():
 
 	return X, Y
 
-def load_cll():
+def load_cll(args):
 	"""
 	Labels in initial dataset:
 	1    11
 	2    49
 	3    51
 	"""
-	data = spio.loadmat(f'{DATA_DIR}/CLL_SUB_111.mat')
+	data = spio.loadmat(f'{args.data_dir}/CLL_SUB_111.mat')
 	X = pd.DataFrame(data['X'])
 	Y = pd.Series(data['Y'][:, 0])
 
@@ -199,13 +199,13 @@ def load_cll():
 
 	return X, Y
 
-def load_smk():
+def load_smk(args):
 	"""
 	Labels in initial dataset:
 	1    90
 	2    97
 	"""
-	data = spio.loadmat(f'{DATA_DIR}/SMK_CAN_187.mat')
+	data = spio.loadmat(f'{args.data_dir}/SMK_CAN_187.mat')
 	X = pd.DataFrame(data['X'])
 	Y = pd.Series(data['Y'][:, 0])
 
@@ -214,40 +214,94 @@ def load_smk():
 
 	return X, Y
 
-def load_simple_linear_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/simple_linear_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'], dtype={'y': int})
+def load_simple_linear_synth(args):
+    data = pd.read_csv(f'{args.data_dir}/SyntheticData/simple_linear_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'], dtype={'y': int})
 
     X = data[['x1','x2','x3','x4','x5']]
     Y = data['y']
     return X, Y
 
-def load_simple_trig_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/simple_trigonometric_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'], dtype={'y': int})
+def load_simple_trig_synth(args):
+    data = pd.read_csv(f'{args.data_dir}/SyntheticData/simple_trigonometric_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','y'], dtype={'y': int})
 
     X = data[['x1','x2','x3','x4','x5']]
     Y = data['y']
     return X, Y
 
-def load_exponential_interaction_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/exponential_interaction_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+def load_exponential_interaction_synth(args):
+    data = pd.read_csv(f'{args.data_dir}/SyntheticData/exponential_interaction_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
 
     X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
     Y = data['y']
     return X, Y
 
-def load_summed_squares_exponential_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/summed_squares_exponential_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+def load_summed_squares_exponential_synth(args):
+    data = pd.read_csv(f'{args.data_dir}/SyntheticData/summed_squares_exponential_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
 
     X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
     Y = data['y']
     return X, Y
 
-def load_trigonometric_polynomial_synth():
-    data = pd.read_csv(f'{DATA_DIR}/SyntheticData/trigonometric_polynomial_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
+def load_trigonometric_polynomial_synth(args):
+    data = pd.read_csv(f'{args.data_dir}/SyntheticData/trigonometric_polynomial_synthetic_dataset.csv', names=['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11','y'], dtype={'y': int})
 
     X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10','x11']]
     Y = data['y']
     return X, Y
+
+def load_mice(args, one_hot = True):
+    """
+    Loading mice protein dataset 
+    Higuera,Clara, Gardiner,Katheleen, and Cios,Krzysztof. (2015). Mice Protein Expression. UCI Machine Learning Repository. https://doi.org/10.24432/C50S3Z.
+
+	Data processing (imputation and normalization) is done as in the CAE paper: Abid, Abubakar, Muhammad Fatih Balin, and James Zou. "Concrete autoencoders for differentiable feature selection and reconstruction." arXiv preprint arXiv:1901.09346 (2019).
+    """
+    filling_value = -100000
+    
+    mice_path = os.join(args.data_dir, 'Data_Cortex_Nuclear.csv')
+
+    X = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(1, 78), filling_values = filling_value, encoding = 'UTF-8')
+    classes = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(78, 81), dtype = None, encoding = 'UTF-8')
+
+    for i, row in enumerate(X):
+        for j, val in enumerate(row):
+            if val == filling_value:
+                X[i, j] = np.mean([X[k, j] for k in range(classes.shape[0]) if np.all(classes[i] == classes[k])])
+
+    DY = np.zeros((classes.shape[0]), dtype = np.uint8)
+    for i, row in enumerate(classes):
+        for j, (val, label) in enumerate(zip(row, ['Control', 'Memantine', 'C/S'])):
+            DY[i] += (2 ** j) * (val == label)
+
+    Y = np.zeros((DY.shape[0], np.unique(DY).shape[0]))
+    for idx, val in enumerate(DY):
+        Y[idx, val] = 1
+
+    X = MinMaxScaler(feature_range=(0,1)).fit_transform(X)
+
+    indices = np.arange(X.shape[0])
+    np.random.shuffle(indices)
+    X = X[indices]
+    Y = Y[indices]
+    DY = DY[indices]
+    classes = classes[indices]
+    
+    if not one_hot:
+        Y = DY
+        
+    X = X.astype(np.float32)
+    Y = Y.astype(np.float32)
+    
+    return X, Y
+
+def load_poly_binarised_decimalised_mod10_synth(args):
+	data = pd.read_csv(f'{args.data_dir}/SyntheticData/poly_binarised_decimalised_mod10_synth_dataset.csv',
+			names=['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y10'],
+			dtype={'y1': int, 'y2': int, 'y3': int, 'y4': int, 'y5': int, 'y6': int, 'y7': int, 'y8': int, 'y9': int, 'y10': int})
+
+	X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10']]
+	Y = data[['y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y10']]
+	return X, Y
 
 def sample_dataset(args, dataset, label, train_size, valid_size, test_size):
 	#### Set train/valid/test sizes
@@ -272,7 +326,7 @@ def sample_metabric_dataset(args, train_size, valid_size, test_size):
 	Sample Metabric dataset on the fly, with custom train/valid/test sizes.
 	"""
 	#### Load expression data
-	expressionsMB = pd.read_csv(f'{DATA_DIR}/Metabric_full/MOLECULARDATA/CURTIS_data_Expression.txt', delimiter='\t').T
+	expressionsMB = pd.read_csv(f'{args.data_dir}/Metabric_full/MOLECULARDATA/CURTIS_data_Expression.txt', delimiter='\t').T
 
 	# set columns
 	expressionsMB.columns = expressionsMB.iloc[0]
@@ -281,7 +335,7 @@ def sample_metabric_dataset(args, train_size, valid_size, test_size):
 	expressionsMB_genes = expressionsMB.T.copy()
 
 	# load Hallmark gene set
-	genes_to_filter = pd.read_csv(f'{DATA_DIR}/imp_genes_list.csv',index_col=0)
+	genes_to_filter = pd.read_csv(f'{args.data_dir}/imp_genes_list.csv',index_col=0)
 	genes_to_filter_unduplicated = genes_to_filter.loc[~genes_to_filter.index.duplicated(keep='first')]
 
 	# keep only the genes from Hallmark
@@ -290,7 +344,7 @@ def sample_metabric_dataset(args, train_size, valid_size, test_size):
 	
 
 	#### Load clinical data
-	clinMB = pd.read_csv(f'{DATA_DIR}/Metabric_full/MOLECULARDATA/TableS6.txt', delimiter='\t')
+	clinMB = pd.read_csv(f'{args.data_dir}/Metabric_full/MOLECULARDATA/TableS6.txt', delimiter='\t')
 	clinMB.set_index('METABRIC.ID',inplace=True)
 
 
@@ -318,11 +372,11 @@ def sample_metabric_dataset(args, train_size, valid_size, test_size):
 
 
 def sample_tcga_dataset(args, train_size, valid_size, test_size):
-	tcga_full = pd.read_csv(f'{DATA_DIR}/TCGA_full/tcga_hncs.csv', index_col=0)
+	tcga_full = pd.read_csv(f'{args.data_dir}/TCGA_full/tcga_hncs.csv', index_col=0)
 	tcga_full = tcga_full.dropna()
 
 	# filter genes
-	partner_genes_to_filter = pd.read_csv(f'{DATA_DIR}/imp_genes_list.csv',index_col=0)
+	partner_genes_to_filter = pd.read_csv(f'{args.data_dir}/imp_genes_list.csv',index_col=0)
 	set_partner_genes_to_filter = set(partner_genes_to_filter.index)
 
 	# Clean the set of columns to match the Partner Naming
@@ -364,22 +418,22 @@ class MNISTDataModule(pl.LightningDataModule):
         super().__init__()
         self.args=args
         self.batch_size = args.batch_size
-        self.data_dir = args.data_dir
+        self.args.data_dir = args.args.data_dir
         # self.transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
         self.prepare_data()
         self.setup()
 
     def prepare_data(self):
         # Download MNIST dataset
-        datasets.MNIST(self.data_dir, train=True, download=True)
-        datasets.MNIST(self.data_dir, train=False, download=True)
+        datasets.MNIST(self.args.data_dir, train=True, download=True)
+        datasets.MNIST(self.args.data_dir, train=False, download=True)
 
     def setup(self, stage=None):
         # Transform and load the MNIST training dataset
-        mnist_full = datasets.MNIST(self.data_dir, train=True, 
+        mnist_full = datasets.MNIST(self.args.data_dir, train=True, 
                                     # transform=self.transform
                                     )
-        mnist_test = datasets.MNIST(self.data_dir, train=False, 
+        mnist_test = datasets.MNIST(self.args.data_dir, train=False, 
                                     # transform=self.transform
                                     )
 
@@ -726,50 +780,56 @@ def create_data_module(args):
 			# compute paths
 			if dataset=='metabric-pam50':
 				if args.dataset_feature_set=='hallmark':
-					args.train_path=f'{DATA_DIR}/Metabric_samples/metabric_pam50_train_{dataset_size}.csv'
-					args.test_path=f'{DATA_DIR}/Metabric_samples/metabric_pam50_test_100.csv'
+					args.train_path=f'{args.data_dir}/Metabric_samples/metabric_pam50_train_{dataset_size}.csv'
+					args.test_path=f'{args.data_dir}/Metabric_samples/metabric_pam50_test_100.csv'
 				else:
-					args.train_path=f'{DATA_DIR}/Metabric_samples/metabric_pam50_all_genes_train_{dataset_size}.csv'
+					args.train_path=f'{args.data_dir}/Metabric_samples/metabric_pam50_all_genes_train_{dataset_size}.csv'
 			elif dataset=='metabric-dr':
 				if args.dataset_feature_set=='hallmark':
-					args.train_path=f'{DATA_DIR}/Metabric_samples/metabric_DR_train_{dataset_size}.csv'
-					args.test_path=f'{DATA_DIR}/Metabric_samples/metabric_DR_test_100.csv'
+					args.train_path=f'{args.data_dir}/Metabric_samples/metabric_DR_train_{dataset_size}.csv'
+					args.test_path=f'{args.data_dir}/Metabric_samples/metabric_DR_test_100.csv'
 				else:
-					args.train_path=f'{DATA_DIR}/Metabric_samples/metabric_DR_all_genes_train_{dataset_size}.csv'
+					args.train_path=f'{args.data_dir}/Metabric_samples/metabric_DR_all_genes_train_{dataset_size}.csv'
 			elif dataset=='tcga-2ysurvival':
-				args.train_path=f'{DATA_DIR}/TCGA_samples/tcga_2ysurvival_train_{dataset_size}.csv'
-				args.test_path=f'{DATA_DIR}/TCGA_samples/tcga_2ysurvival_test_100.csv'
+				args.train_path=f'{args.data_dir}/TCGA_samples/tcga_2ysurvival_train_{dataset_size}.csv'
+				args.test_path=f'{args.data_dir}/TCGA_samples/tcga_2ysurvival_test_100.csv'
 			elif dataset=='tcga-tumor-grade':
-				args.train_path=f'{DATA_DIR}/TCGA_samples/tcga_tumor_grade_train_{dataset_size}.csv'
-				args.test_path=f'{DATA_DIR}/TCGA_samples/tcga_tumor_grade_test_100.csv'
+				args.train_path=f'{args.data_dir}/TCGA_samples/tcga_tumor_grade_train_{dataset_size}.csv'
+				args.test_path=f'{args.data_dir}/TCGA_samples/tcga_tumor_grade_test_100.csv'
 
 			if args.testing_type=='fixed':
 				data_module = create_datamodule_with_fixed_test(args, args.train_path, args.test_path)
 			elif args.testing_type=='cross-validation':
 				X, y = load_csv_data(args.train_path)
 				data_module = create_datamodule_with_cross_validation(args, X, y)
-		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 'simple_trig_synth', 'simple_linear_synth', 'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth']:
+		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 
+                   'simple_trig_synth', 'simple_linear_synth', 'poly_binarised_decimalised_mod10_synth',
+                   'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
+                   'mice_protein']:
 			if dataset=='lung':
-				X, y = load_lung()
+				X, y = load_lung(args)
 			elif dataset=='toxicity':
-				X, y = load_toxicity()
+				X, y = load_toxicity(args)
 			elif dataset=='prostate':
-				X, y = load_prostate()
+				X, y = load_prostate(args)
 			elif dataset=='cll':
-				X, y = load_cll()
+				X, y = load_cll(args)
 			elif dataset=='smk':
-				X, y = load_smk()
+				X, y = load_smk(args)
 			elif dataset=='simple_trig_synth':
-				X, y = load_simple_trig_synth()
+				X, y = load_simple_trig_synth(args)
 			elif dataset=='simple_linear_synth':
-				X, y = load_simple_linear_synth()
+				X, y = load_simple_linear_synth(args)
 			elif dataset=='exponential_interaction_synth':
-				X, y = load_exponential_interaction_synth()
+				X, y = load_exponential_interaction_synth(args)
 			elif dataset=='summed_squares_exponential_synth':
-				X, y = load_summed_squares_exponential_synth()
+				X, y = load_summed_squares_exponential_synth(args)
 			elif dataset=='trigonometric_polynomial_synth':
-				X, y = load_trigonometric_polynomial_synth()
-			
+				X, y = load_trigonometric_polynomial_synth(args)
+			elif dataset=='mice_protein':
+				X, y = load_mice(args)
+			elif dataset=='poly_binarised_decimalised_mod10_synth':
+				X,y = load_poly_binarised_decimalised_mod10_synth(args)
 			if args.restrict_features:
 				if args.chosen_features_list is not None:
 					chosen_features_list = args.chosen_features_list.split(',')
@@ -782,7 +842,9 @@ def create_data_module(args):
 		elif dataset in ['MNIST']:
 			if dataset =='MNIST':
 				# TODO restrict features for MNIST
-				mnist_dm = MNISTDataModule(args)
+				data_module = MNISTDataModule(args)
+		else:
+			raise Exception(f"Dataset <{dataset}> not supported")
       
 	#### Compute classification loss weights
 	if args.class_weight=='balanced':
