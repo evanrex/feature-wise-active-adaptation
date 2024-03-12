@@ -570,6 +570,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
 						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
 	parser.add_argument('--normalize_sparsity', action='store_true', dest='normalize_sparsity', help='If true, divide sparsity lsos by number of features')
+	parser.add_argument('--normalize_reconstruction', type=str,
+						choices=[None, 'num_features', 'num_non_masked_features'],  
+      					help='Normalization method for reconstruction loss. If None, then no normalization is performed. If num_features, then divide by the number of features. If num_non_masked_features, then divide by the number of non-masked features.')
+	
 
 
 	####### DKL

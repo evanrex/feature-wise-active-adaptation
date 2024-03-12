@@ -483,11 +483,20 @@ class TrainingLightningModule(pl.LightningModule):
 
 			if self.args.normalize_sparsity:
 				losses['sparsity'] = (1/len(sparsity_weights)) * losses['sparsity']
+
+		if self.args.normalize_reconstruction:
+			if self.args.normalize_reconstruction == 'num_features':
+				losses['reconstruction'] = (1/len(sparsity_weights)) * losses['reconstruction']
+			elif self.args.normalize_reconstruction == 'num_non_masked_features':
+				losses['reconstruction'] = (1/torch.sum(sparsity_weights)) * losses['reconstruction']
+			else:
+				raise Exception(f"Normalization method  <{self.args.normalize_reconstruction}> not valid. Must be one of ['num_features', 'num_non_masked_features']")
 		
 		if self.args.as_MLP_baseline:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
 			losses['reconstruction'] = torch.tensor(0., device=self.device)
-			
+		
+
 
 		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity']
 		
