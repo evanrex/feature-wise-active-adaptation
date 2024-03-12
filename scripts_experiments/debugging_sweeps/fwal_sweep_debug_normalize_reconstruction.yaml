@@ -27,6 +27,12 @@ parameters:
     # - MNIST
     # - mice_protein
 
+  normalize_reconstruction:
+    distribution: categorical
+    values:
+    - num_features
+    - num_non_masked_features
+
   # seed_model_init:  # number of folds
   #   distribution: categorical
   #   values:

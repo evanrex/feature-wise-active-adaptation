@@ -491,14 +491,14 @@ def parse_arguments(args=None):
 	"""
 	Available datasets
 	- cll
-    - smk
-    - toxicity
-    - lung
-    - metabric-dr__200
-    - metabric-pam50__200
-    - tcga-2ysurvival__200
-    - tcga-tumor-grade__200
-    - prostate
+	- smk
+	- toxicity
+	- lung
+	- metabric-dr__200
+	- metabric-pam50__200
+	- tcga-2ysurvival__200
+	- tcga-tumor-grade__200
+	- prostate
 	"""
 
 	####### Dataset
@@ -516,11 +516,11 @@ def parse_arguments(args=None):
 	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
 	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
 						help='layer size for the feature extractor. If using a virtual layer,\
-							  the first dimension must match it.')
+								the first dimension must match it.')
 	parser.add_argument('--layers_for_hidden_representation', type=int, default=2, 
 						help='number of layers after which to output the hidden representation used as input to the decoder \
-							  (e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
-							  	then the hidden representation will be the representation after the two layers [100, 100])')
+								(e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
+								then the hidden representation will be the representation after the two layers [100, 100])')
 	parser.add_argument('--as_MLP_baseline', action='store_true', dest='as_MLP_baseline', help='Set to true with --model=fwal if want to train FWAL model as a plain MLP ')
 
 
@@ -528,8 +528,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
 	parser.add_argument('--gamma', type=float, default=1.0, 
 						help='The factor multiplied to the reconstruction error. \
-							  If >0, then create a decoder with a reconstruction loss. \
-							  If ==0, then dont create a decoder.')
+								If >0, then create a decoder with a reconstruction loss. \
+								If ==0, then dont create a decoder.')
 	parser.add_argument('--saved_checkpoint_name', type=str, help='name of the wandb artifact name (e.g., model-1dmvja9n:v0)')
 	parser.add_argument('--load_model_weights', action='store_true', dest='load_model_weights', help='True if loading model weights')
 	parser.set_defaults(load_model_weights=False)
@@ -570,10 +570,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--mask_type', type=str, default='gumbel_softmax',
 						choices=['sigmoid', 'gumbel_softmax'],  help='Determines type of mask. If sigmoid then real value between 0 and 1. If gumbel_softmax then discrete values of 0 or 1 sampled from the Gumbel-Softmax distribution')
 	parser.add_argument('--normalize_sparsity', action='store_true', dest='normalize_sparsity', default=True, help='If true, divide sparsity loss by number of features. Defaults to true.')
-	parser.add_argument('--normalize_reconstruction', type=str,
-						choices=[None, 'num_features', 'num_non_masked_features'],  
-      					help='Normalization method for reconstruction loss. If None, then no normalization is performed. If num_features, then divide by the number of features. If num_non_masked_features, then divide by the number of non-masked features.')
-	
+	parser.add_argument('--normalize_reconstruction', type=str, 
+						choices=['None', 'num_features', 'num_non_masked_features'],  
+						help='Normalization method for reconstruction loss. Defaults to None. If "None", then no normalization is performed. If num_features, then divide by the number of features. If num_non_masked_features, then divide by the number of non-masked features.')
+
 
 
 	####### DKL
@@ -585,19 +585,19 @@ def parse_arguments(args=None):
 	parser.add_argument('--wpn_embedding_type', type=str, default='histogram',
 						choices=['histogram', 'all_patients', 'nmf', 'svd'],
 						help='histogram = histogram x means (like FsNet)\
-							  all_patients = randomly pick patients and use their gene expressions as the embedding\
-							  It`s applied over data preprocessed using `embedding_preprocessing`')
+								all_patients = randomly pick patients and use their gene expressions as the embedding\
+								It`s applied over data preprocessed using `embedding_preprocessing`')
 	parser.add_argument('--wpn_embedding_size', type=int, default=50, help='Size of the gene embedding')
 	parser.add_argument('--residual_embedding', type=str, default=None, choices=['resnet'],
 						help='Implement residual embeddings as e^* = e_{static} + f(e). This hyperparameter defines the type of function f')
 
 	parser.add_argument('--diet_network_dims', type=int, nargs='+', default=[100, 100, 100, 100],
 						help="None if you don't want a VirtualLayer. If you want a virtual layer, \
-							  then provide a list of integers for the sized of the tiny network.")
+								then provide a list of integers for the sized of the tiny network.")
 	parser.add_argument('--nonlinearity_weight_predictor', type=str, choices=['tanh', 'leakyrelu'], default='leakyrelu')
 	parser.add_argument('--softmax_diet_network', type=int, default=0, dest='softmax_diet_network',
 						help='If True, then perform softmax on the output of the tiny network.')
-	
+
 							
 	####### Training
 	parser.add_argument('--use_best_hyperparams', action='store_true', dest='use_best_hyperparams',
@@ -627,7 +627,7 @@ def parse_arguments(args=None):
 		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
 	parser.add_argument('--pre_pi', type=float, default=0.5,
 		help='alpha hyperparameter of the SEFS self-supervision task. Determines the weights of the mask prediction loss in the self-supervised task')
-	
+
 	####### Training on the entire train + validation data
 	parser.add_argument('--train_on_full_data', action='store_true', dest='train_on_full_data', \
 						help='Train on the full data (train + validation), leaving only `--test_split` for testing.')
@@ -644,19 +644,19 @@ def parse_arguments(args=None):
 						choices=['pre_cross_entropy_loss', 'pre_total_loss', 'pre_reconstruction_loss'])
 	parser.add_argument('--patience_early_stopping', type=int, default=50,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
-							 It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
+								It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
 	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=5,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
-							 It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
+								It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
 	parser.add_argument('--val_check_interval', type=int, default=10, 
 						help='number of steps at which to check the validation')
 
 	# type of data augmentation
 	parser.add_argument('--valid_aug_dropout_p', type=float, nargs="+", 
 						help="List of dropout data augmentation for the validation data loader.\
-							  A new validation dataloader is created for each value.\
-							  E.g., (1, 10) creates a dataloader with valid_aug_dropout_p=1, valid_aug_dropout_p=10\
-							  in addition to the standard validation")
+								A new validation dataloader is created for each value.\
+								E.g., (1, 10) creates a dataloader with valid_aug_dropout_p=1, valid_aug_dropout_p=10\
+								in addition to the standard validation")
 	parser.add_argument('--valid_aug_times', type=int, nargs="+",
 						help="Number time to perform data augmentation on the validation sample.")
 	parser.add_argument('--restrict_features', action='store_true', dest='restrict_features')
@@ -667,7 +667,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--testing_type', type=str, default='cross-validation',
 						choices=['cross-validation', 'fixed'],
 						help='`cross-validation` performs testing on the testing splits \
-							  `fixed` performs testing on an external testing set supplied in a dedicated file')
+								`fixed` performs testing on an external testing set supplied in a dedicated file')
 
 
 	####### Cross-validation
@@ -675,7 +675,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--cv_folds', type=int, default=5, help="Number of CV splits")
 	parser.add_argument('--test_split', type=int, default=0, help="Index of the test split. It should be smaller than `cv_folds`")
 	parser.add_argument('--valid_percentage', type=float, default=0.25, help='Percentage of training data used for validation')
-							  
+								
 
 	####### Evaluation by taking random samples (with user-defined train/valid/test sizes) from the dataset
 	parser.add_argument('--evaluate_with_sampled_datasets', action='store_true', dest='evaluate_with_sampled_datasets')
@@ -683,10 +683,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--custom_train_size', type=int, default=None)
 	parser.add_argument('--custom_valid_size', type=int, default=None)
 	parser.add_argument('--custom_test_size', type=int, default=None)
-	
+
 	####### Test Time interventions
 	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
-	
+
 	####### Custom evaluation
 	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
 	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
@@ -704,13 +704,13 @@ def parse_arguments(args=None):
 	parser.add_argument('--lookahead_optimizer', type=int, default=0, help='Use Lookahead optimizer.')
 	parser.add_argument('--class_weight', type=str, choices=['standard', 'balanced'], default='balanced', 
 						help="If `standard`, all classes use a weight of 1.\
-							  If `balanced`, classes are weighted inverse proportionally to their size (see https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html)")
+								If `balanced`, classes are weighted inverse proportionally to their size (see https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html)")
 
 	parser.add_argument('--debugging', action='store_true', dest='debugging')
 	parser.set_defaults(debugging=False)
 	parser.add_argument('--deterministic', action='store_true', dest='deterministic')
 	parser.set_defaults(deterministic=False)
-	
+
 
 	####### Others
 	parser.add_argument('--overfit_batches', type=float, default=0, help="0 --> normal training. <1 --> overfit on % of the training data. >1 overfit on this many batches")
@@ -733,8 +733,8 @@ def parse_arguments(args=None):
 	# Experiment set up
 	parser.add_argument('--hpc_run', action='store_true', dest='hpc_run',
 						help='True for when running on HPC')
-	
-	
+
+
 	####### Wandb logging
 	parser.add_argument('--group', type=str, help="Group runs in wand")
 	parser.add_argument('--job_type', type=str, help="Job type for wand")
@@ -752,6 +752,9 @@ def parse_arguments(args=None):
 
 	if args.seed_model_mask is None:
 		args.seed_model_mask = args.seed_model_init
+
+	if args.normalize_reconstruction == "None":
+		args.normalize_reconstruction = None
 
 	return args
 

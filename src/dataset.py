@@ -258,7 +258,7 @@ def load_mice(args, one_hot = True):
     """
     filling_value = -100000
     
-    mice_path = os.join(args.data_dir, 'Data_Cortex_Nuclear.csv')
+    mice_path = os.path.join(args.data_dir, 'Data_Cortex_Nuclear.csv')
 
     X = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(1, 78), filling_values = filling_value, encoding = 'UTF-8')
     classes = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(78, 81), dtype = None, encoding = 'UTF-8')
