@@ -755,6 +755,9 @@ def parse_arguments(args=None):
 
 	if args.normalize_reconstruction == "None":
 		args.normalize_reconstruction = None
+  
+	if args.dataset=="MNIST":
+		args.patient_preprocessing = "raw"
 
 	return args
 

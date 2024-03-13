@@ -467,11 +467,11 @@ class TrainingLightningModule(pl.LightningModule):
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
 		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
-		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='mean') if self.decoder else torch.zeros(1, device=self.device)
-
-		### sparsity loss
+		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='sum') if self.decoder else torch.zeros(1, device=self.device)
+  
 		if sparsity_weights is None:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
+			
 		else:
 			if self.args.sparsity_regularizer=='L1':
 				losses['sparsity'] = self.args.sparsity_regularizer_hyperparam * torch.norm(sparsity_weights, 1)
@@ -870,7 +870,7 @@ class FWAL(TrainingLightningModule):
 		self.first_layer = None
 
 		# Reconstruction Module: 5 layers with 50 neurons each
-		self.reconstruction_module = nn.Sequential(
+		self.reconstruction_weights = nn.Sequential(
 			nn.Linear(args.num_features, 50),
 			nn.ReLU(),
 			nn.Linear(50, 50),
@@ -907,6 +907,12 @@ class FWAL(TrainingLightningModule):
 			nn.ReLU(),
 			nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
 		)
+  
+	def reconstruction_module(self, x):
+		out = self.reconstruction_weights(x)
+		if self.args.reconstruction_loss == "bce":
+			out = torch.sigmoid(out)
+		return out
     
 	def mask_module(self, x, test_time=False):
 		# constructing sparsity weights from mask module

@@ -249,7 +249,7 @@ def load_trigonometric_polynomial_synth(args):
     Y = data['y']
     return X, Y
 
-def load_mice(args, one_hot = True):
+def load_mice(args, one_hot = False):
     """
     Loading mice protein dataset 
     Higuera,Clara, Gardiner,Katheleen, and Cios,Krzysztof. (2015). Mice Protein Expression. UCI Machine Learning Repository. https://doi.org/10.24432/C50S3Z.
@@ -258,7 +258,7 @@ def load_mice(args, one_hot = True):
     """
     filling_value = -100000
     
-    mice_path = os.path.join(args.data_dir, 'Data_Cortex_Nuclear.csv')
+    mice_path = os.path.join(args.data_dir, 'Mice_Protein', 'Data_Cortex_Nuclear.csv')
 
     X = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(1, 78), filling_values = filling_value, encoding = 'UTF-8')
     classes = np.genfromtxt(mice_path, delimiter = ',', skip_header = 1, usecols = range(78, 81), dtype = None, encoding = 'UTF-8')
@@ -290,12 +290,12 @@ def load_mice(args, one_hot = True):
         Y = DY
         
     X = X.astype(np.float32)
-    Y = Y.astype(np.float32)
+    # Y = Y.astype(np.int32)
     
     return X, Y
 
-def load_poly_binarised_decimalised_mod10_synth(args):
-	data = pd.read_csv(f'{args.data_dir}/SyntheticData/poly_binarised_decimalised_mod10_synth_dataset.csv',
+def load_poly_binarised_decimalised_mod10_synth_OHE(args):
+	data = pd.read_csv(f'{args.data_dir}/SyntheticData/poly_binarised_decimalised_mod10_synth_dataset_OHE.csv',
 			names=['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10', 'y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y10'],
 			dtype={'y1': int, 'y2': int, 'y3': int, 'y4': int, 'y5': int, 'y6': int, 'y7': int, 'y8': int, 'y9': int, 'y10': int})
 
@@ -303,6 +303,31 @@ def load_poly_binarised_decimalised_mod10_synth(args):
 	Y = data[['y1', 'y2', 'y3', 'y4', 'y5', 'y6', 'y7', 'y8', 'y9', 'y10']]
 	return X, Y
 
+def load_poly_binarised_decimalised_mod10_synth(args):
+	data = pd.read_csv(f'{args.data_dir}/SyntheticData/poly_binarised_decimalised_mod10_synth_dataset.csv',
+			names=['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10', 'y'],
+			dtype={'y': int})
+
+	X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10']]
+	Y = data['y']
+	return X, Y
+
+def load_MNIST(args):
+	dataset = datasets.MNIST(args.data_dir, train=True, download=True)
+	X = []
+	Y = []
+	for x,y in dataset:
+		X.append(np.array(x.getdata(), dtype=np.float32))
+		Y.append(y)
+	X = np.stack(X)
+	Y = np.array(Y)
+	
+	max_val = X.max()
+	min_val = X.min()
+	X = (X - min_val) / (max_val - min_val)
+	return X, Y
+
+    
 def sample_dataset(args, dataset, label, train_size, valid_size, test_size):
 	#### Set train/valid/test sizes
 	# Create test set
@@ -442,7 +467,8 @@ class MNISTDataModule(pl.LightningDataModule):
 
     def _to_tabular(self, dataset, split_ratio, is_test=False):
         # Convert dataset to tensors
-        X = torch.stack([x[0].view(-1) for x, _ in dataset])
+        X = np.stack([np.array(x.getdata()) for x, _ in dataset])
+        X = torch.tensor(X)
         y = torch.tensor([y for _, y in dataset])
 
         if is_test:
@@ -804,7 +830,7 @@ def create_data_module(args):
 		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 
                    'simple_trig_synth', 'simple_linear_synth', 'poly_binarised_decimalised_mod10_synth',
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
-                   'mice_protein']:
+                   'mice_protein', 'MNIST']:
 			if dataset=='lung':
 				X, y = load_lung(args)
 			elif dataset=='toxicity':
@@ -829,6 +855,8 @@ def create_data_module(args):
 				X, y = load_mice(args)
 			elif dataset=='poly_binarised_decimalised_mod10_synth':
 				X,y = load_poly_binarised_decimalised_mod10_synth(args)
+			elif dataset=='MNIST':
+				X, y = load_MNIST(args)
 			if args.restrict_features:
 				if args.chosen_features_list is not None:
 					chosen_features_list = args.chosen_features_list.split(',')
@@ -838,10 +866,7 @@ def create_data_module(args):
         
     
 			data_module = create_datamodule_with_cross_validation(args, X, y)
-		elif dataset in ['MNIST']:
-			if dataset =='MNIST':
-				# TODO restrict features for MNIST
-				data_module = MNISTDataModule(args)
+
 		else:
 			raise Exception(f"Dataset <{dataset}> not supported")
       
@@ -864,7 +889,7 @@ def create_datamodule_with_cross_validation(args, X, y):
 	"""
 	if type(X)==pd.DataFrame:
 		X = X.to_numpy()
-	if type(y)==pd.Series:
+	if type(y)==pd.Series or type(y)==pd.DataFrame:
 		y = y.to_numpy()
 	
 	if args.dataset_feature_set=='8000':
