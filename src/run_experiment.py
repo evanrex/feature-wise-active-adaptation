@@ -646,11 +646,11 @@ def parse_arguments(args=None):
 	parser.add_argument('--patience_early_stopping', type=int, default=50,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 								It will train for at least   args.val_check_interval * args.patience_early_stopping epochs')
-	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=5,
+	parser.add_argument('--pretrain_patience_early_stopping', type=int, default=20,
 						help='Set number of checks (set by *val_check_interval*) to do early stopping.\
 								It will train for at least   args.val_check_interval * args.pretrain_patience_early_stopping epochs')
-	parser.add_argument('--val_check_interval', type=int, default=10, 
-						help='number of steps at which to check the validation')
+	parser.add_argument('--val_check_interval', type=float, default=0.1, 
+						help='See https://lightning.ai/docs/pytorch/stable/common/trainer.html#val-check-interval')
 
 	# type of data augmentation
 	parser.add_argument('--valid_aug_dropout_p', type=float, nargs="+", 
@@ -822,7 +822,8 @@ if __name__ == "__main__":
 		'metabric-pam50', 'metabric-dr',
 		'tcga-2ysurvival', 'tcga-tumor-grade',
 		'lung', 'prostate', 'toxicity', 'cll', 'smk', 
-		'simple_trig_synth', 'simple_linear_synth', 'poly_binarised_decimalised_mod10_synth',
+		'simple_trig_synth', 'simple_linear_synth', 
+  		'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
 		'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
 		'MNIST',
 		'mice_protein'

@@ -312,6 +312,15 @@ def load_poly_binarised_decimalised_mod10_synth(args):
 	Y = data['y']
 	return X, Y
 
+def load_poly_binarised_decimalised_synth(args):
+	data = pd.read_csv(f'{args.data_dir}/SyntheticData/poly_binarised_decimalised_synth_dataset.csv',
+			names=['x1', 'x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9', 'x10', 'y'],
+			dtype={'y': int})
+
+	X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10']]
+	Y = data['y']
+	return X, Y
+
 def load_MNIST(args):
 	dataset = datasets.MNIST(args.data_dir, train=True, download=True)
 	X = []
@@ -828,7 +837,8 @@ def create_data_module(args):
 				X, y = load_csv_data(args.train_path)
 				data_module = create_datamodule_with_cross_validation(args, X, y)
 		elif dataset in ['lung', 'toxicity', 'prostate', 'cll', 'smk', 
-                   'simple_trig_synth', 'simple_linear_synth', 'poly_binarised_decimalised_mod10_synth',
+                   'simple_trig_synth', 'simple_linear_synth', 
+                   'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
                    'mice_protein', 'MNIST']:
 			if dataset=='lung':
@@ -855,6 +865,8 @@ def create_data_module(args):
 				X, y = load_mice(args)
 			elif dataset=='poly_binarised_decimalised_mod10_synth':
 				X,y = load_poly_binarised_decimalised_mod10_synth(args)
+			elif dataset == 'poly_binarised_decimalised_synth':
+				X,y = load_poly_binarised_decimalised_synth(args)
 			elif dataset=='MNIST':
 				X, y = load_MNIST(args)
 			if args.restrict_features:
