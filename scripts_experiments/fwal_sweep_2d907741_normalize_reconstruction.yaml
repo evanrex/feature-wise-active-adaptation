@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: template
+name: 2d907741_normalize_reconstruction
 
 command:
 - ${env}
@@ -17,9 +17,9 @@ command:
 - --num_workers
 - 31 # optimal for HPC
 - --tags
-- 264b29f6 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- 2d907741 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- ""
+- "Comparing different reconstruction loss normalizations."
 - ${args}
 
 method: grid
@@ -31,6 +31,13 @@ parameters:
     - poly_binarised_decimalised_mod10_synth
     - MNIST
     - mice_protein
+
+  normalize_reconstruction:
+    distribution: categorical
+    values:
+    - None
+    - num_features
+    - num_non_masked_features
 
   seed_model_init:  # number of folds
     distribution: categorical

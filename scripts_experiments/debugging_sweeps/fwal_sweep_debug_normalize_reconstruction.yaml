@@ -30,8 +30,9 @@ parameters:
   normalize_reconstruction:
     distribution: categorical
     values:
-    - num_features
-    - num_non_masked_features
+    - None
+    # - num_features
+    # - num_non_masked_features
 
   # seed_model_init:  # number of folds
   #   distribution: categorical

@@ -133,16 +133,16 @@ def run_experiment(args):
 		
 
 		if args.model == 'lasso':
-			model = LogisticRegression(penalty='l1', C=args.lasso_C, 
+			model = LogisticRegression(penalty='elasticnet', C=args.lasso_C, l1_ratio=args.lasso_l1_ratio,
 						class_weight=class_weights, max_iter=10000,
-						random_state=42, solver='saga', verbose=True)
+						random_state=args.seed_model_init, solver='saga', verbose=True)
 			model.fit(data_module.X_train, data_module.y_train)
 
 		elif args.model == 'rf':
 			model = RandomForestClassifier(n_estimators=args.rf_n_estimators, 
 						min_samples_leaf=args.rf_min_samples_leaf, max_depth=args.rf_max_depth,
 						class_weight=class_weights, max_features='sqrt',
-						random_state=42, verbose=True)
+						random_state=args.seed_model_init, verbose=True)
 			model.fit(data_module.X_train, data_module.y_train)
 
 		elif args.model == 'lgb':
@@ -536,10 +536,11 @@ def parse_arguments(args=None):
 
 	####### Scikit-learn parameters
 	parser.add_argument('--lasso_C', type=float, default=1e3, help='lasso regularization parameter')
+	parser.add_argument('--lasso_l1_ratio', type=float, default=1e3, help='lasso l1 ratio parameter') 
 
 	parser.add_argument('--rf_n_estimators', type=int, default=500, help='number of trees in the random forest')
 	parser.add_argument('--rf_max_depth', type=int, default=5, help='maximum depth of the tree')
-	parser.add_argument('--rf_min_samples_leaf', type=int, default=2, help='minimum number of samples in a leaf')
+	parser.add_argument('--rf_min_samples_leaf', type=int, default=3, help='minimum number of samples in a leaf')
 
 	parser.add_argument('--lgb_learning_rate', type=float, default=0.1)
 	parser.add_argument('--lgb_max_depth', type=int, default=1)
