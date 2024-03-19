@@ -250,8 +250,6 @@ def run_experiment(args):
 		if args.sparsity_gene_embedding_size==-1:
 			args.sparsity_gene_embedding_size = args.train_size
 
-		args.num_tasks = args.feature_extractor_dims[-1] 			# number of output units of the feature extractor. Used for convenience when defining the GP
-
 				
 		if args.pretrain and (args.num_pretrain_steps!=-1):
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
@@ -514,9 +512,8 @@ def parse_arguments(args=None):
 
 	####### Model
 	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
-	parser.add_argument('--feature_extractor_dims', type=int, nargs='+', default=[100, 100, 10],  # use last dimnsion of 10 following the paper "Promises and perils of DKL" 
-						help='layer size for the feature extractor. If using a virtual layer,\
-								the first dimension must match it.')
+	parser.add_argument('--num_CAE_neurons', type=int, 
+						help='number of features to select for CAE')
 	parser.add_argument('--layers_for_hidden_representation', type=int, default=2, 
 						help='number of layers after which to output the hidden representation used as input to the decoder \
 								(e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
@@ -826,7 +823,8 @@ if __name__ == "__main__":
   		'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
 		'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
 		'MNIST',
-		'mice_protein'
+		'mice_protein',
+  		"COIL20", "gisette", "Isolet", "madelon", "USPS"
 	]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
@@ -926,6 +924,9 @@ if __name__ == "__main__":
 			}
 
 			args.lgb_learning_rate, args.lgb_max_depth = params[args.dataset]
+   
+		elif args.model =='cae':
+			assert args.num_CAE_neurons is not None
 	
 	if args.hpc_run:
 		torch.set_float32_matmul_precision('high')
@@ -937,5 +938,7 @@ if __name__ == "__main__":
 		args.reconstruction_loss = "bce" # binary cross entropy
 	else:
 		args.reconstruction_loss = "mse" # mean squared error
+  
+	
 
 	run_experiment(args)

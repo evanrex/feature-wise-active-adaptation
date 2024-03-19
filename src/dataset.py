@@ -15,6 +15,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader, random_split, TensorDataset
 import torchvision.transforms as transforms
 import torchvision.datasets as datasets
+import scipy.io
 
 
 
@@ -320,6 +321,13 @@ def load_poly_binarised_decimalised_synth(args):
 	X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10']]
 	Y = data['y']
 	return X, Y
+
+def load_ASU_dataset(args, dataset):
+    mat = scipy.io.loadmat(os.path.join(args.data_dir, "ASU_datasets", f"{dataset}.mat"))
+    X = mat['X']
+    y = np.squeeze(mat['Y'])
+    
+    return X, y
 
 def load_MNIST(args):
 	dataset = datasets.MNIST(args.data_dir, train=True, download=True)
@@ -840,7 +848,8 @@ def create_data_module(args):
                    'simple_trig_synth', 'simple_linear_synth', 
                    'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
-                   'mice_protein', 'MNIST']:
+                   'mice_protein', 'MNIST',
+                   "COIL20", "gisette", "Isolet", "madelon", "USPS"]:
 			if dataset=='lung':
 				X, y = load_lung(args)
 			elif dataset=='toxicity':
@@ -869,6 +878,9 @@ def create_data_module(args):
 				X,y = load_poly_binarised_decimalised_synth(args)
 			elif dataset=='MNIST':
 				X, y = load_MNIST(args)
+			elif dataset in ["COIL20", "gisette", "Isolet", "madelon", "USPS"]:
+				X, y = load_ASU_dataset(args, dataset)
+    
 			if args.restrict_features:
 				if args.chosen_features_list is not None:
 					chosen_features_list = args.chosen_features_list.split(',')

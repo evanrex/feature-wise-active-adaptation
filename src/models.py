@@ -68,149 +68,22 @@ def reshape_batch(batch):
 	return x, y
 
 
-""""
-General components of a model
-
-WeightPredictorNetwork(optional) -> FeatureExtractor -> Decoder (optional) -> DNN/DKL
-"""
 def create_model(args, data_module):
 	"""
-	Function to create the model. Firstly creates the components (e.g., FeatureExtractor, Decoder) and then assambles them.
-
 	Returns a model instance.
 	"""
 	pl.seed_everything(args.seed_model_init, workers=True)
  
 	if args.model == 'fwal':
 		model = FWAL(args)
-		return model
 	
-	# ### create embedding matrices
-	# wpn_embedding_matrix = data_module.get_embedding_matrix(args.wpn_embedding_type, args.wpn_embedding_size)
-	# if args.wpn_embedding_type==args.sparsity_gene_embedding_type and args.wpn_embedding_size==args.sparsity_gene_embedding_size:
-	# 	spn_embedding_matrix = wpn_embedding_matrix
-	# else:
-	# 	spn_embedding_matrix = data_module.get_embedding_matrix(args.sparsity_gene_embedding_type, args.sparsity_gene_embedding_size)
+	elif args.model=='cae': 
+		model = CAE(args)
 
-	# ### create decoder
-	# if args.gamma > 0:
-	# 	wpn_decoder = WeightPredictorNetwork(args, wpn_embedding_matrix)
-	# 	decoder = Decoder(args, wpn_decoder)
-	# else:
-	# 	decoder = None
-
-	# ### create models
-	# if args.model=='fsnet':
-	# 	concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0], is_diet_layer=True, wpn_embedding_matrix=wpn_embedding_matrix)
-
-	# 	model = DNN(args, concrete_layer, decoder)
-
-	elif args.model=='cae': # Supervised Autoencoder
-		concrete_layer = ConcreteLayer(args, args.num_features, args.feature_extractor_dims[0])
-
-		model = DNN(args, concrete_layer, None)
-
-	# elif args.model in ['dnn', 'dietdnn']:
-	# 	if args.model=='dnn':
-	# 		is_diet_layer = False
-	# 	else: # args.model=='dietdnn':
-	# 		is_diet_layer = True
-		
-	# 	first_layer = FirstLinearLayer(args, is_diet_layer=is_diet_layer, sparsity_type=args.sparsity_type,
-	# 					wpn_embedding_matrix=wpn_embedding_matrix, spn_embedding_matrix=spn_embedding_matrix)
-
-	# 	model = DNN(args, first_layer, decoder)
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 
 	return model
-
-
-class WeightPredictorNetwork(nn.Module):
-	"""
-	Linear -> Tanh -> Linear -> Tanh
-	"""
-	def __init__(self, args, embedding_matrix):
-		"""
-		A tiny network outputs that outputs a matrix W.
-
-		:param nn.Tensor(D, M) embedding_matrix: matrix with the embeddings (D = number of features, M = embedding size)
-		"""
-		super().__init__()
-		print(f"Initializing WeightPredictorNetwork with embedding_matrix of size {embedding_matrix.size()}")
-		self.args = args
-
-		self.register_buffer('embedding_matrix', embedding_matrix) # store the static embedding_matrix
-
-
-		##### Weight predictor network (wpn)
-		layers = []
-		prev_dimension = args.wpn_embedding_size
-		for i, dim in enumerate(args.diet_network_dims):
-			if i == len(args.diet_network_dims)-1: # last layer
-				layer = nn.Linear(prev_dimension, dim)
-				nn.init.uniform_(layer.weight, -0.01, 0.01) # same initialization as in the DietNetwork original paper
-				layers.append(layer)
-				layers.append(nn.Tanh())
-			else:
-				if args.nonlinearity_weight_predictor=='tanh':
-					layer = nn.Linear(prev_dimension, dim)
-					nn.init.uniform_(layer.weight, -0.01, 0.01) # same initialization as in from the DietNetwork original paper
-					layers.append(layer)
-					layers.append(nn.Tanh())					# DietNetwork paper uses tanh all over
-				elif args.nonlinearity_weight_predictor=='leakyrelu':
-					layer = nn.Linear(prev_dimension, dim)
-					nn.init.kaiming_normal_(layer.weight, a=0.01, mode='fan_out', nonlinearity='leaky_relu')
-					layers.append(layer)
-					layers.append(nn.LeakyReLU())
-
-				if args.batchnorm:
-					layers.append(nn.BatchNorm1d(dim))
-				layers.append(nn.Dropout(args.dropout_rate))
-				
-			prev_dimension = dim
-
-		self.wpn = nn.Sequential(*layers)
-
-
-		#### Residual embeddings
-		self.nn_residual_embedding = None
-		if args.residual_embedding=='resnet':
-			print(f"Using ---{args.residual_embedding}--- residual embeddings")
-
-			# use the updated ResNet order, including dropout because we use Linear layers instead of Convolutional
-			linear_1 = nn.Linear(args.wpn_embedding_size, args.wpn_embedding_size)
-			linear_2 = nn.Linear(args.wpn_embedding_size, args.wpn_embedding_size)
-
-			# initialize the layers
-			nn.init.kaiming_normal_(linear_1.weight, a=0.01, mode='fan_out', nonlinearity='leaky_relu')
-			nn.init.kaiming_normal_(linear_2.weight, a=0.01, mode='fan_out', nonlinearity='leaky_relu')
-
-			self.nn_residual_embedding = nn.Sequential(
-				nn.BatchNorm1d(args.wpn_embedding_size),
-				nn.Dropout(args.dropout_rate),
-				nn.LeakyReLU(),
-				linear_1,
-
-				nn.BatchNorm1d(args.wpn_embedding_size),
-				nn.Dropout(args.dropout_rate),
-				nn.LeakyReLU(),
-				linear_2,
-			)
-
-
-	def forward(self):
-		# use the wpn to predict the weight matrix
-		embeddings = self.embedding_matrix
-		if self.nn_residual_embedding:
-			embeddings = embeddings + self.nn_residual_embedding(embeddings)
-
-		W = self.wpn(embeddings) # W has size (D x K)
-		
-		if self.args.softmax_diet_network:
-			W = F.softmax(W, dim=1) # FsNet applied softmax over the (feature - all-K-neurons)
-		
-		return W.T # size K x D
 
 
 class ConcreteLayer(nn.Module):
@@ -234,16 +107,8 @@ class ConcreteLayer(nn.Module):
 		self.current_iteration = 0 
 		self.anneal_iterations = args.concrete_anneal_iterations # maximum number of iterations for the temperature optimization
 
-		self.is_diet_layer = is_diet_layer
-		if is_diet_layer:
-			# if diet layer, then initialize a weight predictor matrix
-			assert wpn_embedding_matrix is not None
-			self.wpn = WeightPredictorNetwork(args, wpn_embedding_matrix)
-		else:
-			# alphas (output_dim x input_dim) - learnable parameters for each neuron
-			# alphas[i] = parameters of neuron i
-			self.alphas = nn.Parameter(torch.zeros(output_dim, input_dim), requires_grad=True)
-			torch.nn.init.xavier_normal_(self.alphas, gain=1) # Glorot normalization, following the original CAE implementation
+		self.alphas = nn.Parameter(torch.zeros(output_dim, input_dim), requires_grad=True)
+		torch.nn.init.xavier_normal_(self.alphas, gain=1) # Glorot normalization, following the original CAE implementation
 		
 	def get_temperature(self):
 		# compute temperature		
@@ -262,7 +127,7 @@ class ConcreteLayer(nn.Module):
 
 		temperature = self.get_temperature()
 
-		alphas = self.wpn() if self.is_diet_layer else self.alphas # alphas is a K x D matrix
+		alphas = self.alphas # alphas is a K x D matrix
 
 		# sample from the concrete distribution
 		if self.training:
@@ -284,146 +149,6 @@ class ConcreteLayer(nn.Module):
 		return x, None # return additional None for compatibility
 
 
-def create_linear_layers(args, layer_sizes, layers_for_hidden_representation):
-	"""
-	Args
-	- layer_sizes: list of the sizes of the sizes of the linear layers
-	- layers_for_hidden_representation: number of layers of the first part of the encoder (used to output the input for the decoder)
-
-	Returns
-	Two lists of Pytorch Modules (e.g., Linear, BatchNorm1d, Dropout)
-	- encoder_first_part
-	- encoder_second_part
-	"""
-	encoder_first_part = []
-	encoder_second_part = []
-	for i, (dim_prev, dim) in enumerate(zip(layer_sizes[:-1], layer_sizes[1:])):
-		if i < layers_for_hidden_representation:					# first part of the encoder
-			encoder_first_part.append(nn.Linear(dim_prev, dim))
-			encoder_first_part.append(nn.LeakyReLU())
-			if args.batchnorm:
-				encoder_first_part.append(nn.BatchNorm1d(dim))
-			encoder_first_part.append(nn.Dropout(args.dropout_rate))
-		else:														# second part of the encoder
-			encoder_second_part.append(nn.Linear(dim_prev, dim))
-			encoder_second_part.append(nn.LeakyReLU())
-			if args.batchnorm:
-				encoder_second_part.append(nn.BatchNorm1d(dim))
-			encoder_second_part.append(nn.Dropout(args.dropout_rate))
-		
-	return encoder_first_part, encoder_second_part
-
-
-class FirstLinearLayer(nn.Module):
-	"""
-	First linear layer (with activation, batchnorm and dropout), with the ability to include:
-	- diet layer (i.e., there's a weight predictor network which predicts the weight matrix)
-	- sparsity network (i.e., there's a sparsity network which outputs sparsity weights)
-	"""
-
-	def __init__(self, args, is_diet_layer, sparsity_type, wpn_embedding_matrix, spn_embedding_matrix):
-		"""
-		If is_diet_layer==None and sparsity_type==None, this layers acts as a standard linear layer
-		"""
-		super().__init__()
-
-		self.args = args
-		self.is_diet_layer = is_diet_layer
-		self.sparsity_type = sparsity_type
-
-		# DIET LAYER
-		if is_diet_layer:
-			# if diet layer, then initialize a weight predictor network
-			self.wpn = WeightPredictorNetwork(args, wpn_embedding_matrix)
-		else:
-			# standard linear layer
-			self.weights_first_layer = nn.Parameter(torch.zeros(args.feature_extractor_dims[0], args.num_features))
-			nn.init.kaiming_normal_(self.weights_first_layer, a=0.01, mode='fan_out', nonlinearity='leaky_relu')
-
-		# auxiliary layer after the matrix multiplication
-		self.bias_first_layer = nn.Parameter(torch.zeros(args.feature_extractor_dims[0]))
-		self.layers_after_matrix_multiplication = nn.Sequential(*[
-			nn.LeakyReLU(),
-			nn.BatchNorm1d(args.feature_extractor_dims[0]),
-			nn.Dropout(args.dropout_rate)
-		])
-
-		# SPARSITY REGULARIZATION for the first layer
-		if sparsity_type=='global':
-			if args.sparsity_method=='sparsity_network':
-				print("Creating Sparsity network")
-				self.sparsity_model = SparsityNetwork(args, spn_embedding_matrix)
-			elif args.sparsity_method=='learnable_vector':
-				print("Creating learnable network")
-				self.sparsity_model = LearnableSparsityVector(args)
-			else:
-				raise Exception("Sparsity method not valid")
-		elif args.sparsity_type=='local':
-			if args.sparsity_method=='sparsity_network':
-				self.sparsity_model = SparsityNetwork(args, spn_embedding_matrix)
-			else:
-				raise Exception("Sparsity method not valid")
-		else:
-			self.sparsity_model = None
-
-	def forward(self, x):
-		"""
-		Input:
-			x: (batch_size x num_features)
-		"""
-		# first layer
-		W = self.wpn() if self.is_diet_layer else self.weights_first_layer # W has size (K x D)
-		
-		if self.args.sparsity_type==None:
-			all_sparsity_weights = None
-
-			hidden_rep = F.linear(x, W, self.bias_first_layer)
-		
-		elif self.args.sparsity_type=='global':
-			all_sparsity_weights = self.sparsity_model(None) 	# Tensor (D, )
-			assert all_sparsity_weights.shape[0]==self.args.num_features and len(all_sparsity_weights.shape)==1
-			W = torch.matmul(W, torch.diag(all_sparsity_weights))
-
-			hidden_rep = F.linear(x, W, self.bias_first_layer)
-
-		elif self.args.sparsity_type=='local':
-			# create a different weight matrix for each sample
-			hidden_rep = torch.zeros(x.shape[0], self.args.feature_extractor_dims[0], device=x.device)
-			
-			all_sparsity_weights = self.sparsity_model(x) # size (B, D)
-			assert all_sparsity_weights.shape[0]==x.shape[0] and all_sparsity_weights.shape[1]==self.args.num_features
-			
-			#### Slow way to compute the hidden representation
-			for i, x_i in enumerate(x): # x_i has size (D)
-				sparsity_weights = all_sparsity_weights[i]
-				assert sparsity_weights.shape[0]==self.args.num_features and len(sparsity_weights.shape)==1
-
-				W = W * sparsity_weights
-
-				hidden_rep_x_i = F.linear(torch.unsqueeze(x_i, dim=0), W, self.bias_first_layer) # (1 x out_dimension)
-				hidden_rep_x_i = torch.squeeze(hidden_rep_x_i, dim=0) # (out_dimension)
-
-				assert len(hidden_rep_x_i.shape)==1 and hidden_rep_x_i.shape[0]==self.args.feature_extractor_dims[0]
-
-				hidden_rep[i] = hidden_rep_x_i
-			
-	
-		return self.layers_after_matrix_multiplication(hidden_rep), all_sparsity_weights
-
-
-class Decoder(nn.Module):
-	def __init__(self, args, wpn):
-		super().__init__()
-		assert wpn!=None, "The decoder is used only with a WPN (because it's only used within the DietNetwork)"
-
-		self.wpn = wpn
-		self.bias = nn.Parameter(torch.zeros(args.num_features,))
-
-	def forward(self, hidden_rep):
-		W = self.wpn().T # W has size D x K
-
-		return F.linear(hidden_rep, W, self.bias)
-
 
 """"
 Metrics
@@ -438,11 +163,7 @@ Metrics
 - loss
 	- total
 	- reconstruction
-	- DNN
-		- cross-entropy
-	- DKL
-		- data fit
-		- complexity penalty
+	- cross-entropy
 """
 
 class TrainingLightningModule(pl.LightningModule):
@@ -467,7 +188,11 @@ class TrainingLightningModule(pl.LightningModule):
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
 		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
-		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='sum') if self.decoder else torch.zeros(1, device=self.device)
+		
+		if x_hat is None:
+			losses['reconstruction'] = torch.tensor(0., device=self.device)
+		else:
+			losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='sum') #if self.decoder else torch.zeros(1, device=self.device)
   
 		if sparsity_weights is None:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
@@ -506,7 +231,12 @@ class TrainingLightningModule(pl.LightningModule):
 	def pre_loss(self, x_true, x_pred, mask_true, mask_pred):
 		losses = {}
 		losses['pre_reconstruction'] = self.reconstruction_loss(x_pred, x_true, reduction='mean')
-		losses['pre_cross_entropy'] = F.binary_cross_entropy_with_logits(mask_pred, mask_true)
+  
+		if mask_true is None or mask_pred is None:
+			losses['pre_cross_entropy'] = torch.tensor(0., device=self.device)
+		else:
+			losses['pre_cross_entropy'] = F.binary_cross_entropy_with_logits(mask_pred, mask_true)
+        
 		losses['pre_total'] = losses['pre_reconstruction'] + self.args.pre_alpha * losses['pre_cross_entropy']
 		return losses
 
@@ -564,9 +294,9 @@ class TrainingLightningModule(pl.LightningModule):
 		# self.log("train/lr", self.learning_rate)
 		
 		# log temperature of the concrete distribution
-		if isinstance(self.first_layer, ConcreteLayer):
-			self.log("train/concrete_temperature", self.first_layer.get_temperature())
-		else:
+		# if isinstance(self.first_layer, ConcreteLayer):
+		# 	self.log("train/concrete_temperature", self.first_layer.get_temperature())
+		if self.args.model=='fwal' and self.args.mask_type=='gumbel_softmax':
 			self.log("train/gumbel_temperature", self.get_temperature())
 		outputs = {
 			'loss': losses['total'],
@@ -783,63 +513,102 @@ class TrainingLightningModule(pl.LightningModule):
 			}
 
 
-class DNN(TrainingLightningModule):
-	"""
-	Flexible MLP-based architecture which can implement an MLP, WPS, FsNet
-
-
-	DietDNN architecture
-	Linear -> LeakyRelu -> BatchNorm -> Dropout -> Linear -> LeakyRelu-> BatchNorm -> Dropout -> Linear -> y_hat
-																							|
-																							|
-																						  hidden
-																							|
-																							v
-																						  Linear
-																							|
-																							V
-																						  x_hat
-	"""
-	def __init__(self, args, first_layer, decoder):
-		"""
-		DNN with one last layer added (with `num_classes` logits) on top of the feature_extractor.
-		It's fair to add one more layer, because the DKL has a mixing layer added after the GP.
-
-		:param nn.Module feature_extractor: the feature_extractor (except the last layer to the softmax logits)
-		:param nn.Module decoder: decoder (for reconstruction loss)
-				If None, then don't have a reconstruction loss
-		"""
+class CAE(TrainingLightningModule):
+	def __init__(self, args):
 		super().__init__(args)
-
-		if decoder:
-			print(f'Creating {args.model} with decoder...')
-		else:
-			print(f'Creating {args.model} without decoder...')
-
 		self.args = args
 		self.log_test_key = None
 		self.learning_rate = args.lr
+		# self.temp_start = 10
+		# self.temp_end = 0.01
+		# the iteration is used in annealing the temperature
+		# 	it's increased with every call to sample during training
+		# self.current_iteration = 0 
+		# self.anneal_iterations = args.concrete_anneal_iterations 
+   
+		self.decoder=True
+		self.first_layer = None
+  
+		self.concrete_layer = ConcreteLayer(args, args.num_features, args.num_CAE_neurons)
+
+		# Reconstruction Module: 5 layers with 50 neurons each
+		self.reconstruction_module = ReconstructionModule(args, args.num_CAE_neurons, args.num_features)
+        
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = PredictionModule(args, args.num_CAE_neurons, args.num_classes)
+
+	def pre_forward(self, x):
 		
-		self.first_layer = first_layer
-		encoder_first_layers, encoder_second_layers = create_linear_layers(
-			args, args.feature_extractor_dims, args.layers_for_hidden_representation-1) # the -1 in (args.layers_for_hidden_representation - 1) is because we don't consider the first layer
-
-		self.encoder_first_layers = nn.Sequential(*encoder_first_layers)
-		self.encoder_second_layers = nn.Sequential(*encoder_second_layers)
-
-		self.classification_layer = nn.Linear(args.feature_extractor_dims[-1], args.num_classes)
-		self.decoder = decoder
-
-	def forward(self, x, test_time=None):
-		x, sparsity_weights = self.first_layer(x)			   # pass through first layer
-
-		x = self.encoder_first_layers(x)					   # pass throught the first part of the following layers
-		x_hat = self.decoder(x) if self.decoder else None      # reconstruction
-
-		x = self.encoder_second_layers(x)
-		y_hat = self.classification_layer(x)           		   # classification, returns logits
+		masked_x, _ = self.concrete_layer(x)			   # pass through first layer
 		
-		return y_hat, x_hat, sparsity_weights
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		return reconstructed_x, None, None
+    
+	def forward(self, x, test_time=False):
+		"""
+		Forward pass for training
+		"""
+		with torch.no_grad():
+			masked_x, _ = self.concrete_layer(x)	
+				
+		prediction = self.prediction_module(masked_x)
+
+		return prediction, None, None
+   
+	def finish_pretraining(self):
+		self.freeze_concrete_layer()
+
+	def freeze_concrete_layer(self):
+		for param in self.concrete_layer.parameters():
+			param.requires_grad = False
+	
+
+class ReconstructionModule(nn.Module):
+	def __init__(self, args, in_dim, out_dim):
+		super().__init__()
+		self.args = args
+		self.reconstruction_weights = nn.Sequential(
+				nn.Linear(in_dim, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, out_dim)  # Last layer outputs num_features
+			)
+
+
+	def forward(self, x):
+		out = self.reconstruction_weights(x)
+		if self.args.reconstruction_loss == "bce":
+			out = torch.sigmoid(out)
+		return out
+
+
+class PredictionModule(nn.Module):
+	def __init__(self, args, in_dim, out_dim):
+		super().__init__()
+		self.args = args
+		self.weights = nn.Sequential(
+				nn.Linear(in_dim, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, 50),
+				nn.ReLU(),
+				nn.Linear(50, out_dim)  # Last layer outputs num_features
+			)
+
+
+	def forward(self, x):
+		out = self.weights(x)
+		return out
+
 
 class FWAL(TrainingLightningModule):
 	def __init__(self, args):
@@ -870,17 +639,7 @@ class FWAL(TrainingLightningModule):
 		self.first_layer = None
 
 		# Reconstruction Module: 5 layers with 50 neurons each
-		self.reconstruction_weights = nn.Sequential(
-			nn.Linear(args.num_features, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, args.num_features)  # Last layer outputs num_features
-		)
+		self.reconstruction_module = ReconstructionModule(args, in_dim=args.num_features, out_dim=args.num_features)
         
         # define weights for pre-training task
 		self.mask_predictor_module = nn.Sequential( 
@@ -896,23 +655,7 @@ class FWAL(TrainingLightningModule):
 		)
 
 		# Prediction Module: 5 layers with 50 neurons each
-		self.prediction_module = nn.Sequential(
-			nn.Linear(args.num_features, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, args.num_classes)  # Last layer outputs num_classes
-		)
-  
-	def reconstruction_module(self, x):
-		out = self.reconstruction_weights(x)
-		if self.args.reconstruction_loss == "bce":
-			out = torch.sigmoid(out)
-		return out
+		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
     
 	def mask_module(self, x, test_time=False):
 		# constructing sparsity weights from mask module
