@@ -24,11 +24,13 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - simple_trig_synth
-    - poly_binarised_decimalised_mod10_synth
-    - MNIST
-    - mice_protein
-  
+    - poly_binarised_decimalised_synth
+    - COIL20 
+    - gisette 
+    - Isolet
+    - madelon
+    - USPS
+    
   lasso_C:
     distribution: categorical
     values:

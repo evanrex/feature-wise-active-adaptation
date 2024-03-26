@@ -10,7 +10,7 @@
 
 #! sbatch directives begin here ###############################
 #! Name of the job:
-#SBATCH -J gty91unf
+#SBATCH -J xq42dfxh
 #! Which project should be charged (NB Wilkes2 projects end in '-GPU'):
 #SBATCH -A COMPUTERLAB-SL2-GPU
 #! How many whole nodes should be allocated?
@@ -61,7 +61,7 @@ module load rhel8/default-amp              # REQUIRED - loads the basic environm
 application="wandb agent"
 
 #! Run options for the application:
-options="evangeorgerex/fwal/gty91unf"
+options="evangeorgerex/fwal/xq42dfxh"
 
 #! Work directory (i.e. where the job will run):
 workdir="$SLURM_SUBMIT_DIR"  # The value of $SLURM_SUBMIT_DIR sets workdir to the directory
