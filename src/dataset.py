@@ -320,14 +320,24 @@ def load_poly_binarised_decimalised_synth(args):
 
 	X = data[['x1','x2','x3','x4','x5','x6','x7','x8','x9','x10']]
 	Y = data['y']
+	
+	X = X.to_numpy()
+	Y = Y.to_numpy()
+	X = X.astype(np.float64)
+	Y = Y.astype(np.int64)
 	return X, Y
 
 def load_ASU_dataset(args, dataset):
-    mat = scipy.io.loadmat(os.path.join(args.data_dir, "ASU_datasets", f"{dataset}.mat"))
-    X = mat['X']
-    y = np.squeeze(mat['Y'])
-    
-    return X, y
+	mat = scipy.io.loadmat(os.path.join(args.data_dir, "ASU_datasets", f"{dataset}.mat"))
+	X = mat['X']
+	y = np.squeeze(mat['Y'])
+	X = X.astype(np.float64)
+	y = y.astype(np.int64)
+
+	if y.min() == 1 and y.max() == len(set(y)):
+		y -= 1
+
+	return X, y	
 
 def load_MNIST(args):
 	dataset = datasets.MNIST(args.data_dir, train=True, download=True)

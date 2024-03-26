@@ -768,7 +768,7 @@ if __name__ == "__main__":
 	print("Starting...")
 
 	logging.basicConfig(
-		filename='/home/er647/projects/feature-wise-active-learning/logs_exceptions.txt',
+		filename=os.path.join(os.getcwd(),'logs_exceptions.txt'),
 		filemode='a',
 		format='%(asctime)s,%(msecs)d %(name)s %(levelname)s %(message)s',
 		datefmt='%H:%M:%S',
