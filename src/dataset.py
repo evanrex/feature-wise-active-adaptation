@@ -336,6 +336,9 @@ def load_ASU_dataset(args, dataset):
 
 	if y.min() == 1 and y.max() == len(set(y)):
 		y -= 1
+	
+	if y.min() == -1 and y.max() == 1 and len(set(y)) == 2:
+		y = (y + 1) // 2
 
 	return X, y	
 
@@ -708,11 +711,11 @@ class DatasetModule(pl.LightningDataModule):
 
 	def train_dataloader(self):
 		return DataLoader(self.train_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
-							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)
+							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def val_dataloader(self):
 		# dataloader with original samples
-		dataloaders = [DataLoader(self.valid_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)]
+		dataloaders = [DataLoader(self.valid_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)]
 
 		# dataloaders for each validation augmentation type
 		if self.args.valid_aug_dropout_p:
@@ -759,7 +762,7 @@ class DatasetModule(pl.LightningDataModule):
 
 
 	def test_dataloader(self):
-		return DataLoader(self.test_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory)
+		return DataLoader(self.test_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def get_embedding_matrix(self, embedding_type, embedding_size):
 		"""

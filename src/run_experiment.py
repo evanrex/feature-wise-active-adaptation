@@ -728,6 +728,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--num_workers', type=int, default=1, help="number of workers for loading dataset")
 	parser.add_argument('--no_pin_memory', dest='pin_memory', action='store_false', help='dont pin memory for data loaders')
 	parser.set_defaults(pin_memory=True)
+	parser.add_argument('--no_persistent_workers',  dest='persistent_workers', action='store_false', help='Set to not use persistent workers')
+	parser.set_defaults(persistent_workers=True)
 
 	# Experiment set up
 	parser.add_argument('--hpc_run', action='store_true', dest='hpc_run',
