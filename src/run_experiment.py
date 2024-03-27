@@ -335,7 +335,8 @@ def run_experiment(args):
 	
 			
 			if args.test_time_interventions == "evaluate_test_time_interventions":
-				evaluate_test_time_interventions(trainer, model, data_module, args, checkpoint_path)
+				# We have just loaded the best model weights for fwal in the prev if statement
+				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
 			elif args.test_time_interventions == "assist_test_time_interventions":
 				assist_test_time_interventions(model, data_module, args, wandb_logger)
     
@@ -690,8 +691,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
 
 	####### Custom evaluation
-	parser.add_argument('--', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
-	parser.add_argument('--test_time_inteonly_test_time_intervention_evalrventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
+	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
+	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
 
@@ -945,6 +946,6 @@ if __name__ == "__main__":
 	else:
 		args.reconstruction_loss = "mse" # mean squared error
   
-	
+	args.test_time_interventions_in_progress = False
 
 	run_experiment(args)

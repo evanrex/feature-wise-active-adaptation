@@ -246,22 +246,31 @@ class TrainingLightningModule(pl.LightningModule):
 		self.log(f"{key}/pre_reconstruction_loss{dataloader_name}", losses['pre_reconstruction'].item(), sync_dist=self.args.hpc_run)
 		self.log(f"{key}/pre_cross_entropy_loss{dataloader_name}", losses['pre_cross_entropy'].item(), sync_dist=self.args.hpc_run)
 
+
 	def log_losses(self, losses, key, dataloader_name=""):
-		self.log(f"{key}/total_loss{dataloader_name}", losses['total'].item(), sync_dist=self.args.hpc_run)
-		self.log(f"{key}/reconstruction_loss{dataloader_name}", losses['reconstruction'].item(), sync_dist=self.args.hpc_run)
-		self.log(f"{key}/cross_entropy_loss{dataloader_name}", losses['cross_entropy'].item(), sync_dist=self.args.hpc_run)
-		self.log(f"{key}/sparsity_loss{dataloader_name}", losses['sparsity'].item(), sync_dist=self.args.hpc_run)
+		metrics = {
+			f"{key}/total_loss{dataloader_name}": losses['total'].item(),
+			f"{key}/reconstruction_loss{dataloader_name}": losses['reconstruction'].item(),
+			f"{key}/cross_entropy_loss{dataloader_name}": losses['cross_entropy'].item(),
+			f"{key}/sparsity_loss{dataloader_name}": losses['sparsity'].item(),
+		}
+		# Log all metrics at once, associating them with num_additional_features
+		self.log_dict(metrics, sync_dist=self.args.hpc_run)
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
 		y_true, y_pred = get_labels_lists(outputs)
+		metrics = {}
 		if not self.args.pretrain:
-			self.log(f'{key}/balanced_accuracy{dataloader_name}', balanced_accuracy_score(y_true, y_pred), sync_dist=self.args.hpc_run)
-		self.log(f'{key}/F1_weighted{dataloader_name}', f1_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
-		self.log(f'{key}/precision_weighted{dataloader_name}', precision_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
-		self.log(f'{key}/recall_weighted{dataloader_name}', recall_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
-		if self.args.num_classes==2:
-			self.log(f'{key}/AUROC_weighted{dataloader_name}', roc_auc_score(y_true, y_pred, average='weighted'), sync_dist=self.args.hpc_run)
-
+			metrics[f'{key}/balanced_accuracy{dataloader_name}'] = balanced_accuracy_score(y_true, y_pred)
+		metrics[f'{key}/F1_weighted{dataloader_name}'] = f1_score(y_true, y_pred, average='weighted')
+		metrics[f'{key}/precision_weighted{dataloader_name}'] = precision_score(y_true, y_pred, average='weighted')
+		metrics[f'{key}/recall_weighted{dataloader_name}'] = recall_score(y_true, y_pred, average='weighted')
+		if self.args.num_classes == 2:
+			metrics[f'{key}/AUROC_weighted{dataloader_name}'] = roc_auc_score(y_true, y_pred, average='weighted')
+		
+		# Log all metrics at once, including num_additional_features with each
+		self.log_dict(metrics, sync_dist=self.args.hpc_run)
+    
 	def pre_training_step(self, batch, batch_idx):
 		x, y_true = batch
 	
@@ -413,7 +422,7 @@ class TrainingLightningModule(pl.LightningModule):
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		if self.args.test_time_interventions:
+		if self.args.test_time_interventions_in_progress:
 			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True, k=self.args.num_additional_features)
 		else:
 			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
@@ -445,8 +454,6 @@ class TrainingLightningModule(pl.LightningModule):
 			'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
 		}
   
-		if self.args.test_time_interventions:
-			losses['num_additional_features'] = self.args.num_additional_features
    
 		self.log_losses(losses, key=self.log_test_key)
 		self.log_epoch_metrics(outputs, self.log_test_key)
@@ -738,12 +745,12 @@ class FWAL(TrainingLightningModule):
 		
 		return reconstructed_x, mask, mask_pred
     
-	def forward(self, x, test_time=False):
+	def forward(self, x, test_time=False, k=None):
 		"""
 		Forward pass for training
 		"""
 
-		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time)
+		masked_x, sparsity_weights, sparsity_weights_probs = self.mask_module(x, test_time=test_time, k=k)
 		
 		reconstructed_x = self.reconstruction_module(masked_x)
 		
