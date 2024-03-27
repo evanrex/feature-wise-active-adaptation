@@ -69,7 +69,7 @@ def evaluate_test_time_interventions(model, data_module, args, wandb_logger):
     num_necessary_features = int(model.necessary_features().float().sum().item())
     end = args.num_features - num_necessary_features
     
-    max_steps = 3 # 10
+    max_steps = 10
     num_steps = min(max_steps, end + 1)
     
     for k in np.linspace(0, end, num_steps, dtype=int):
