@@ -179,6 +179,7 @@ class TrainingLightningModule(pl.LightningModule):
 		self.test_step_outputs = []
 		self.args = args
 		self.learning_rate = args.lr
+	
   
 		if args.reconstruction_loss == "mse":
 			self.reconstruction_loss = F.mse_loss
@@ -412,7 +413,10 @@ class TrainingLightningModule(pl.LightningModule):
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
+		if self.args.test_time_interventions:
+			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True, k=self.args.num_additional_features)
+		else:
+			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
 		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		output =  {
@@ -440,6 +444,10 @@ class TrainingLightningModule(pl.LightningModule):
 			'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
 			'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
 		}
+  
+		if self.args.test_time_interventions:
+			losses['num_additional_features'] = self.args.num_additional_features
+   
 		self.log_losses(losses, key=self.log_test_key)
 		self.log_epoch_metrics(outputs, self.log_test_key)
 
@@ -657,7 +665,20 @@ class FWAL(TrainingLightningModule):
 		# Prediction Module: 5 layers with 50 neurons each
 		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
     
-	def mask_module(self, x, test_time=False):
+	def mask_module(self, x, test_time=False, k=None):
+		"""
+		Constructs the sparsity weights from the mask module
+		
+		Args:
+			x (torch.Tensor): The input tensor.
+			test_time (bool, optional): Flag indicating whether it is test time or not. Defaults to False.
+			k (int, optional): The number of negative values to consider during test time. Defaults to None.
+		
+		Returns:
+			torch.Tensor: The masked input tensor.
+			torch.Tensor: The sparsity weights.
+			torch.Tensor: The sparsity weights probabilities.
+		"""
 		# constructing sparsity weights from mask module
 		if self.args.as_MLP_baseline:
 			return x, torch.ones_like(x), torch.ones_like(x)
@@ -665,21 +686,33 @@ class FWAL(TrainingLightningModule):
 			sparsity_weights = torch.sigmoid(self.mask)
 		elif self.args.mask_type == "gumbel_softmax":
 			if test_time:
-				sparsity_weights = (self.mask>0).float()
+				sparsity_weights = (self.mask > 0).float()
+				if k is not None:
+					flat_mask = self.mask.flatten()
+					negative_values_mask = flat_mask <= 0
+					negative_values = flat_mask[negative_values_mask]
+					k = min(k, negative_values.size(0))
+					_, topk_indices = torch.topk(-negative_values, k)
+					k_largest_negatives_mask = torch.zeros_like(flat_mask, dtype=torch.float32)
+					k_largest_negatives_mask[negative_values_mask.nonzero().squeeze(1)[topk_indices]] = 1
+					k_largest_negatives_mask = k_largest_negatives_mask.reshape(self.mask.shape)
+					sparsity_weights += k_largest_negatives_mask
+					sparsity_weights = torch.clamp(sparsity_weights, 0, 1)  # Ensure the mask is still 0 or 1
+
 				sparsity_weights_probs = torch.sigmoid(self.mask)
 			else:
 				if self.training:
 					self.current_iteration += 1
 				temperature = self.get_temperature()
-				soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask,-1*self.mask),dim=1), tau=temperature, hard=False, dim=-1)
+				soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((self.mask, -1 * self.mask), dim=1), tau=temperature, hard=False, dim=-1)
 				_, max_indices = soft_outputs.max(dim=-1, keepdim=True)
-				hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:,0]
-				soft_outputs=soft_outputs[:,0]
+				hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:, 0]
+				soft_outputs = soft_outputs[:, 0]
 				sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
 				sparsity_weights_probs = soft_outputs
 		else:
 			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
-			
+
 		return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
 
 	def get_temperature(self):

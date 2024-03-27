@@ -297,10 +297,6 @@ def run_experiment(args):
 			if args.evaluate_all_masks:
 				evaluate_all_masks(args, model,data_module, wandb_logger)
 
-			if args.test_time_interventions == "evaluate_test_time_interventions":
-				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
-			elif args.test_time_interventions == "assist_test_time_interventions":
-				assist_test_time_interventions(model, data_module, args, wandb_logger)
 
 			if args.train_on_full_data:
 				checkpoint_path = checkpoint_callback.last_model_path
@@ -336,6 +332,13 @@ def run_experiment(args):
 					'best_mask': mask_as_string_of_ones_and_zeros,
 					'best_mask_parameters': model.mask.data
 				})
+	
+			
+			if args.test_time_interventions == "evaluate_test_time_interventions":
+				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
+			elif args.test_time_interventions == "assist_test_time_interventions":
+				assist_test_time_interventions(model, data_module, args, wandb_logger)
+    
 	wandb.finish()
 
 	print("\nExiting from train function..")
@@ -687,8 +690,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--num_necessary_features', type=int, default=None, help='Number of necessary features to select for test-time interventions. Used when model mask_type is sigmoid.')
 
 	####### Custom evaluation
-	parser.add_argument('--only_test_time_intervention_eval', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
-	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
+	parser.add_argument('--', action='store_true', default=False, help='Set this flag to enable only test time interventions.')
+	parser.add_argument('--test_time_inteonly_test_time_intervention_evalrventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
 
