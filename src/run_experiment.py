@@ -335,7 +335,7 @@ def run_experiment(args):
 	
 			
 			if args.test_time_interventions == "evaluate_test_time_interventions":
-				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
+				evaluate_test_time_interventions(trainer, model, data_module, args, checkpoint_path)
 			elif args.test_time_interventions == "assist_test_time_interventions":
 				assist_test_time_interventions(model, data_module, args, wandb_logger)
     
