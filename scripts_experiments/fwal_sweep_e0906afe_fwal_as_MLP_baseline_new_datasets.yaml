@@ -24,6 +24,7 @@ parameters:
     distribution: categorical
     values:
     - poly_binarised_decimalised_synth
+    - mice_protein
     - COIL20 
     - gisette 
     - Isolet

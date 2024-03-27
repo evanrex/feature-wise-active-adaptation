@@ -8,8 +8,8 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --test_time_interventions 
-- evaluate_test_time_interventions
+# - --test_time_interventions 
+# - evaluate_test_time_interventions
 - --pretrain
 - --num_pretrain_steps
 - 5000
@@ -27,12 +27,14 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
     - COIL20 
     - gisette 
     - Isolet
     - madelon
     - USPS
+    - MNIST
 
   seed_model_init:  # number of folds
     distribution: categorical
