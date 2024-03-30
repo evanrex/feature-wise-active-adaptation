@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 40881ae7_fwal_tti_finish2
+name: 39efeb67_fwal_only_reconstruct_masked_GPU
 
 command:
 - ${env}
@@ -13,14 +13,14 @@ command:
 - --pretrain
 - --num_pretrain_steps
 - 5000
+- --only_reconstruct_masked
 - --hpc_run
 - --num_workers
-- 1 # required for CPU HPC
-# - 31 # GPU HPC
+- 31 # optimal for HPC GPU
 - --tags
-- 9624537b # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- 39efeb67 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "40881ae7_fwal_tti"
+- "39efeb67_fwal_only_reconstruct_masked"
 - ${args}
 
 method: grid
