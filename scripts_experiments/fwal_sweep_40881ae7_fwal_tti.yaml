@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 40881ae7_fwal_tti
+name: 40881ae7_fwal_tti_finish2
 
 command:
 - ${env}
@@ -15,7 +15,8 @@ command:
 - 5000
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC
+- 1 # required for CPU HPC
+# - 31 # GPU HPC
 - --tags
 - 9624537b # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
@@ -27,13 +28,13 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
-    - mice_protein
-    - COIL20 
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
+    # - COIL20 
     - gisette 
-    - Isolet
-    - madelon
-    - USPS
+    # - Isolet
+    # - madelon
+    # - USPS
     - MNIST
 
   seed_model_init:  # number of folds
