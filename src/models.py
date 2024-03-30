@@ -754,9 +754,12 @@ class FWAL(TrainingLightningModule):
 		
 		reconstructed_x = self.reconstruction_module(masked_x)
 		
-		prediction = self.prediction_module(reconstructed_x)
-
-		reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
+		if self.args.only_reconstruct_masked:
+			reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x 
+			prediction = self.prediction_module(reconstructed_x)
+		else:
+			prediction = self.prediction_module(reconstructed_x)
+			reconstructed_x = (1-sparsity_weights)*reconstructed_x + sparsity_weights*masked_x  # only want loss for reconstructed x terms that were masked
 		
 		return prediction, reconstructed_x, sparsity_weights_probs
     
