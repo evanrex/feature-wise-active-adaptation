@@ -332,7 +332,17 @@ def run_experiment(args):
 					'best_mask': mask_as_string_of_ones_and_zeros,
 					'best_mask_parameters': model.mask.data
 				})
-	
+
+			elif args.model == 'cae':
+				model.eval()
+				int_list = model.necessary_features().int().tolist()
+				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+				wandb.log({"best_mask_parameters":int_list})
+				wandb_logger.log_metrics({
+					'best_mask': mask_as_string_of_ones_and_zeros,
+					'best_mask_parameters': int_list
+				})
 			
 			if args.test_time_interventions == "evaluate_test_time_interventions":
 				# We have just loaded the best model weights for fwal in the prev if statement
@@ -518,6 +528,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
 	parser.add_argument('--num_CAE_neurons', type=int, 
 						help='number of features to select for CAE')
+	parser.add_argument('--CAE_neurons_ratio', type=float, default=1.0,
+						help='fraction of features to select with CAE')
 	parser.add_argument('--layers_for_hidden_representation', type=int, default=2, 
 						help='number of layers after which to output the hidden representation used as input to the decoder \
 								(e.g., if the layers are [100, 100, 10] and layers_for_hidden_representation=2, \
@@ -932,9 +944,6 @@ if __name__ == "__main__":
 			}
 
 			args.lgb_learning_rate, args.lgb_max_depth = params[args.dataset]
-   
-		elif args.model =='cae':
-			assert args.num_CAE_neurons is not None
 	
 	if args.hpc_run:
 		torch.set_float32_matmul_precision('high')

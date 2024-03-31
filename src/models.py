@@ -6,6 +6,7 @@ from math import e, gamma
 from modulefinder import STORE_OPS
 from grpc import xds_channel_credentials
 from importlib_metadata import version
+from matplotlib.pylab import noncentral_chisquare
 from pyro import param, sample
 import scipy
 from sklearn.utils import axis0_safe_slice
@@ -117,7 +118,7 @@ class ConcreteLayer(nn.Module):
 		else:
 			return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
 
-	def sample(self):
+	def sample(self, deterministic=False):
 		"""
 		Sample from the concrete distribution.
 		"""
@@ -130,21 +131,21 @@ class ConcreteLayer(nn.Module):
 		alphas = self.alphas # alphas is a K x D matrix
 
 		# sample from the concrete distribution
-		if self.training:
+		if self.training and not deterministic:
 			samples = F.gumbel_softmax(alphas, tau=temperature, hard=False) # size K x D
 			assert samples.shape == (self.output_dim, self.input_dim)
 		else: 			# sample using argmax
 			index_max_alphas = torch.argmax(alphas, dim=1) # size K
-			samples = torch.zeros(self.output_dim, self.input_dim).cuda()
+			samples = torch.zeros(self.output_dim, self.input_dim)
 			samples[torch.arange(self.output_dim), index_max_alphas] = 1.
 
 		return samples
 
-	def forward(self, x):
+	def forward(self, x, test_time=False):
 		"""
 		- x (batch_size x input_dim)
 		"""
-		mask = self.sample()   	# size (number_neurons x input_dim)
+		mask = self.sample(deterministic=test_time)   	# size (number_neurons x input_dim)
 		x = torch.matmul(x, mask.T) 		# size (batch_size, number_neurons)
 		return x, None # return additional None for compatibility
 
@@ -197,6 +198,7 @@ class TrainingLightningModule(pl.LightningModule):
   
 		if sparsity_weights is None:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
+			losses['reconstruction'] = torch.tensor(0., device=self.device)
 			
 		else:
 			if self.args.sparsity_regularizer=='L1':
@@ -210,15 +212,15 @@ class TrainingLightningModule(pl.LightningModule):
 			if self.args.normalize_sparsity:
 				losses['sparsity'] = (1/len(sparsity_weights)) * losses['sparsity']
 
-		if self.args.normalize_reconstruction:
-			if self.args.normalize_reconstruction == 'num_features':
-				losses['reconstruction'] = (1/len(sparsity_weights)) * losses['reconstruction']
-			elif self.args.normalize_reconstruction == 'num_non_masked_features':
-				losses['reconstruction'] = (1/torch.sum(sparsity_weights)) * losses['reconstruction']
-			else:
-				raise Exception(f"Normalization method  <{self.args.normalize_reconstruction}> not valid. Must be one of ['num_features', 'num_non_masked_features']")
+			if self.args.normalize_reconstruction:
+				if self.args.normalize_reconstruction == 'num_features':
+					losses['reconstruction'] = (1/len(sparsity_weights)) * losses['reconstruction']
+				elif self.args.normalize_reconstruction == 'num_non_masked_features':
+					losses['reconstruction'] = (1/torch.sum(sparsity_weights)) * losses['reconstruction']
+				else:
+					raise Exception(f"Normalization method  <{self.args.normalize_reconstruction}> not valid. Must be one of ['num_features', 'num_non_masked_features']")
 		
-		if self.args.as_MLP_baseline:
+		if self.args.as_MLP_baseline or self.args.model =='cae':
 			losses['sparsity'] = torch.tensor(0., device=self.device)
 			losses['reconstruction'] = torch.tensor(0., device=self.device)
 		
@@ -280,12 +282,16 @@ class TrainingLightningModule(pl.LightningModule):
 
 		self.log_pre_losses(losses, key='pre_train')
 
+		if mask_pred is not None:
+			y_pred = (mask_pred>0).float()
+		else:
+			y_pred = None
 		
 		outputs = {
 			'loss': losses['pre_total'],
 			'losses': detach_tensors(losses),
 			'y_true': mask,
-			'y_pred': (mask_pred>0).float()
+			'y_pred': y_pred
 		}
 		self.training_step_outputs.append(outputs)
 		return outputs
@@ -319,7 +325,8 @@ class TrainingLightningModule(pl.LightningModule):
 
 	def on_train_epoch_end(self):
 		if self.args.pretrain:
-			self.log_epoch_metrics(self.training_step_outputs, 'pre_train')
+			if not self.args.model=='cae': # CAE does not have these metrics as it does not do classification in pretraining
+				self.log_epoch_metrics(self.training_step_outputs, 'pre_train')
 		else:
 			self.log_epoch_metrics(self.training_step_outputs, 'train')
 		self.training_step_outputs.clear()  # free memory
@@ -333,10 +340,15 @@ class TrainingLightningModule(pl.LightningModule):
 
 		self.log_pre_losses(losses, key='pre_valid')
 		
+		if mask_pred is not None:
+			y_pred = (mask_pred>0).float()
+		else:
+			y_pred = None
+   
 		output = {
 			'losses': detach_tensors(losses),
 			'y_true': mask,
-			'y_pred': (mask_pred>0).float()
+			'y_pred': y_pred
 		}
 		
 		while len(self.validation_step_outputs) <= dataloader_idx:
@@ -397,7 +409,8 @@ class TrainingLightningModule(pl.LightningModule):
 					dataloader_name=f"__{self.args.val_dataloaders_name[dataloader_id]}"
 
 				self.log_pre_losses(losses, key='pre_valid', dataloader_name=dataloader_name)
-				self.log_epoch_metrics(outputs, key='pre_valid', dataloader_name=dataloader_name)
+				if not self.args.model=='cae': # CAE does not have these metrics as it does not do classification in pretraining
+					self.log_epoch_metrics(outputs, key='pre_valid', dataloader_name=dataloader_name)
 			else:
 
 				losses = {
@@ -540,6 +553,9 @@ class CAE(TrainingLightningModule):
 		# 	it's increased with every call to sample during training
 		# self.current_iteration = 0 
 		# self.anneal_iterations = args.concrete_anneal_iterations 
+  
+		if args.num_CAE_neurons is None:
+			args.num_CAE_neurons = int(round( args.num_features * args.CAE_neurons_ratio))
    
 		self.decoder=True
 		self.first_layer = None
@@ -553,7 +569,7 @@ class CAE(TrainingLightningModule):
 		self.prediction_module = PredictionModule(args, args.num_CAE_neurons, args.num_classes)
 
 	def pre_forward(self, x):
-		
+		# TODO fix pre-steps in TrainingLightningModule to not use SEFS pretraining for CAE
 		masked_x, _ = self.concrete_layer(x)			   # pass through first layer
 		
 		reconstructed_x = self.reconstruction_module(masked_x)
@@ -565,7 +581,7 @@ class CAE(TrainingLightningModule):
 		Forward pass for training
 		"""
 		with torch.no_grad():
-			masked_x, _ = self.concrete_layer(x)	
+			masked_x, _ = self.concrete_layer(x, test_time=True)	
 				
 		prediction = self.prediction_module(masked_x)
 
@@ -578,6 +594,11 @@ class CAE(TrainingLightningModule):
 		for param in self.concrete_layer.parameters():
 			param.requires_grad = False
 	
+	def necessary_features(self):
+		"""
+		Returns the necessary features
+		"""
+		return self.concrete_layer.sample(deterministic=True).sum(dim=0) > 0
 
 class ReconstructionModule(nn.Module):
 	def __init__(self, args, in_dim, out_dim):
