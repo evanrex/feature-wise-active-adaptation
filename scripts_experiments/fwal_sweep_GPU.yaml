@@ -16,7 +16,8 @@ command:
 - --only_reconstruct_masked
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC GPU
+- 20 # optimal for HPC GPU
+- --no_persistent_workers # crashing when we have persistent workers
 - --tags
 - 39efeb67 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
