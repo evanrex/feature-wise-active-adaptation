@@ -3,7 +3,7 @@
 #SBATCH --output=logs/out_%A.out
 #SBATCH --error=logs/err_%A.err
 #SBATCH -A COMPUTERLAB-SL2-CPU
-#SBATCH --time=2:00:00
+#SBATCH --time=10:00:00
 #SBATCH -p icelake
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
