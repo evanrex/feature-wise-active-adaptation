@@ -2,6 +2,7 @@ import collections
 from dataclasses import dataclass
 from pickletools import optimize
 from statistics import mode
+from pkg_resources import evaluate_marker
 import pytorch_lightning
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
@@ -228,8 +229,12 @@ def run_experiment(args):
 
 		elif args.model =='xgboost':
 			import xgboost as xgb
+			if args.num_classes == 2:
+				eval_metric = 'logloss'
+			else:
+				eval_metric = 'mlogloss'
 			model = xgb.XGBClassifier(
-				eval_metric='logloss', use_label_encoder=False,
+				eval_metric=eval_metric, use_label_encoder=False,
 				random_state=args.seed_model_init, verbose=True, 
 				early_stopping_rounds=int(args.patience_early_stopping*args.val_check_interval),
 				device='cuda'
