@@ -47,6 +47,7 @@ def get_run_name(args):
 def create_wandb_logger(args):
 	wandb_logger = WandbLogger(
 		project=WANDB_PROJECT,
+		save_dir=DATA_DIR,
 		group=args.group,
 		job_type=args.job_type,
 		tags=args.tags,
@@ -123,7 +124,7 @@ def run_experiment(args):
 
 
 	#### Scikit-learn training
-	if args.model in ['lasso', 'rf', 'lgb', 'tabnet', 'lassonet']:
+	if args.model in ['lasso', 'rf', 'lgb', 'tabnet', 'lassonet', 'xgboost']:
 		# scikit-learn expects class_weights to be a dictionary
 		class_weights = {}
 		for i, val in enumerate(args.class_weights):
@@ -225,7 +226,16 @@ def run_experiment(args):
 			model.path(data_module.X_train, data_module.y_train,
 				X_val = data_module.X_valid, y_val = data_module.y_valid)
 
-
+		elif args.model =='xgboost':
+			import xgboost as xgb
+			model = xgb.XGBClassifier(
+				eval_metric='logloss', use_label_encoder=False,
+				random_state=args.seed_model_init, verbose=True, 
+				early_stopping_rounds=int(args.patience_early_stopping*args.val_check_interval),
+				device='cuda'
+			)
+			model.fit(data_module.X_train, data_module.y_train, eval_set=[(data_module.X_valid, data_module.y_valid)], verbose=True)	
+   
 		#### Log metrics
 		y_pred_train = model.predict(data_module.X_train)
 		y_pred_valid = model.predict(data_module.X_valid)
@@ -525,7 +535,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal'], default='fwal')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal', 'xgboost'], default='fwal')
 	parser.add_argument('--num_CAE_neurons', type=int, 
 						help='number of features to select for CAE')
 	parser.add_argument('--CAE_neurons_ratio', type=float, default=1.0,
