@@ -137,6 +137,8 @@ class ConcreteLayer(nn.Module):
 		else: 			# sample using argmax
 			index_max_alphas = torch.argmax(alphas, dim=1) # size K
 			samples = torch.zeros(self.output_dim, self.input_dim)
+			if torch.cuda.is_available():
+				samples = samples.cuda()
 			samples[torch.arange(self.output_dim), index_max_alphas] = 1.
 
 		return samples
