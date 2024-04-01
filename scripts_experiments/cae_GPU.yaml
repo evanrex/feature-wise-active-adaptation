@@ -8,8 +8,8 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --test_time_interventions 
-- evaluate_test_time_interventions
+- --model
+- cae
 - --pretrain
 - --num_pretrain_steps
 - 5000
