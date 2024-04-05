@@ -48,7 +48,7 @@ def get_run_name(args):
 def create_wandb_logger(args):
 	wandb_logger = WandbLogger(
 		project=WANDB_PROJECT,
-		save_dir=DATA_DIR,
+		save_dir=args.data_dir,
 		group=args.group,
 		job_type=args.job_type,
 		tags=args.tags,

@@ -150,8 +150,7 @@ def create_model(args, data_module):
 	elif args.model=='SEFS':
 		# 1. compute correlation matrix from train data module
 		# 2. compute L = Cholesky-decomposition(correlation matrix)
-
-		# Example usage
+		args.normalize_reconstruction = False
 		correlation_matrix = compute_correlation_matrix(data_module.train_dataloader())
 		L = torch.linalg.cholesky(correlation_matrix)
 		model = SEFS(args, L)
@@ -625,7 +624,11 @@ class MultiBernoulli(nn.Module):
 		self.args = args
 		self.L = L
 		mask_init_value = self.args.mask_init_value if self.args.mask_init_value  is not None else 0.5
-		self.pi = torch.full((args.num_features,), mask_init_value, dtype=torch.float32)
+		# check if cuda is available
+		if torch.cuda.is_available():
+			self.pi = torch.full((args.num_features,), mask_init_value, dtype=torch.float32, device='cuda')
+		else:
+			self.pi = torch.full((args.num_features,), mask_init_value, dtype=torch.float32)
 
 	def forward(self, x):
 		"""
@@ -647,7 +650,10 @@ class RelaxedMultiBernoulli(nn.Module):
 		super().__init__()
 		self.args = args
 		self.L = L
-		self.pi_logit = nn.Parameter(torch.zeros(args.num_features, dtype = torch.float32), requires_grad=True)
+		if torch.cuda.is_available():
+			self.pi_logit = nn.Parameter(torch.zeros(args.num_features, dtype = torch.float32, device='cuda'), requires_grad=True)
+		else:
+			self.pi_logit = nn.Parameter(torch.zeros(args.num_features, dtype = torch.float32), requires_grad=True)
 
 	def forward(self, x, test_time=False):
 		"""
