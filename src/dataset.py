@@ -342,6 +342,18 @@ def load_ASU_dataset(args, dataset):
 
 	return X, y	
 
+def load_PBMC(args):
+	import scvi # type: ignore
+	adata = scvi.data.purified_pbmc_dataset(save_path=args.data_dir)
+	adata = adata[adata.obs['cell_types'].isin(['naive_t', 'regulatory_t'])]
+	X = adata.X.toarray()
+	y = np.array(adata.obs['cell_types'].map({'naive_t': 0, 'regulatory_t': 1}).values)
+	X = X.astype(np.float64)
+	y = y.astype(np.int64)
+	return X, y
+	
+    
+
 def load_MNIST(args):
 	dataset = datasets.MNIST(args.data_dir, train=True, download=True)
 	X = []
@@ -862,7 +874,8 @@ def create_data_module(args):
                    'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
                    'mice_protein', 'MNIST',
-                   "COIL20", "gisette", "Isolet", "madelon", "USPS"]:
+                   "COIL20", "gisette", "Isolet", "madelon", "USPS",
+                   "PBMC"]:
 			if dataset=='lung':
 				X, y = load_lung(args)
 			elif dataset=='toxicity':
@@ -893,6 +906,8 @@ def create_data_module(args):
 				X, y = load_MNIST(args)
 			elif dataset in ["COIL20", "gisette", "Isolet", "madelon", "USPS"]:
 				X, y = load_ASU_dataset(args, dataset)
+			elif dataset == "PBMC":
+				X, y = load_PBMC(args)
     
 			if args.restrict_features:
 				if args.chosen_features_list is not None:

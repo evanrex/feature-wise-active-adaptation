@@ -869,7 +869,8 @@ if __name__ == "__main__":
 		'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
 		'MNIST',
 		'mice_protein',
-  		"COIL20", "gisette", "Isolet", "madelon", "USPS"
+  		"COIL20", "gisette", "Isolet", "madelon", "USPS",
+		"PBMC"
 	]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
