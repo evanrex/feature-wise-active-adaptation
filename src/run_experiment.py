@@ -348,7 +348,7 @@ def run_experiment(args):
 					'best_mask_parameters': model.mask.data
 				})
 
-			elif args.model == 'cae':
+			elif args.model in ['cae', 'superivsed_cae']:
 				model.eval()
 				int_list = model.necessary_features().int().tolist()
 				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
@@ -357,6 +357,16 @@ def run_experiment(args):
 				wandb_logger.log_metrics({
 					'best_mask': mask_as_string_of_ones_and_zeros,
 					'best_mask_parameters': int_list
+				})
+			elif args.model =='SEFS':
+				model.eval()
+				int_list = model.necessary_features().int().tolist()
+				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
+				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+				wandb.log({"best_mask_parameters":int_list})
+				wandb_logger.log_metrics({
+					'best_mask': mask_as_string_of_ones_and_zeros,
+					'best_mask_parameters': model.mask_module.pi_logit.data
 				})
 			
 			if args.test_time_interventions == "evaluate_test_time_interventions":
@@ -540,7 +550,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal', 'xgboost'], default='fwal')
+	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal', 'xgboost', 'supervised_cae', 'SEFS'], default='fwal')
 	parser.add_argument('--num_CAE_neurons', type=int, 
 						help='number of features to select for CAE')
 	parser.add_argument('--CAE_neurons_ratio', type=float, default=1.0,

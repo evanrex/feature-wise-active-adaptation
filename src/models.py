@@ -68,6 +68,69 @@ def reshape_batch(batch):
 
 	return x, y
 
+import torch
+
+def aggregate_statistics(data_loader):
+	"""
+	Aggregate necessary statistics across all batches for correlation calculation.
+
+	Args:
+	- data_loader: DataLoader providing batches of data as (features, labels).
+
+	Returns:
+	- total_sum: Sum of features across all data.
+	- total_square_sum: Sum of squares of features across all data.
+	- product_sum: Sum of products of pairs of features across all data.
+	- n_samples: Total number of samples.
+	"""
+	total_sum = None
+	total_square_sum = None
+	product_sum = None
+	n_samples = 0
+
+	for x, _ in data_loader:
+		x = x.view(x.size(0), -1)
+		if torch.cuda.is_available():
+			x = x.cuda()  # Flatten and move to GPU
+		if total_sum is None:
+			n_features = x.shape[1]
+			total_sum = torch.zeros(n_features, device=x.device)
+			total_square_sum = torch.zeros(n_features, device=x.device)
+			product_sum = torch.zeros((n_features, n_features), device=x.device)
+
+		total_sum += x.sum(dim=0)
+		total_square_sum += (x ** 2).sum(dim=0)
+		product_sum += x.t().mm(x)
+		n_samples += x.shape[0]
+
+	return total_sum, total_square_sum, product_sum, n_samples
+
+def compute_correlation_matrix(data_loader):
+    """
+    Compute the correlation matrix from aggregated statistics.
+    
+    Args:
+    - total_sum, total_square_sum, product_sum: Aggregated statistics from `aggregate_statistics`.
+    - n_samples: Total number of samples.
+    
+    Returns:
+    - Correlation matrix as a 2D torch.Tensor.
+    """
+    total_sum, total_square_sum, product_sum, n_samples = aggregate_statistics(data_loader)
+    mean = total_sum / n_samples
+    variance = (total_square_sum / n_samples) - (mean ** 2)
+    stddev = torch.sqrt(variance)
+
+    # Compute covariance matrix
+    covariance_matrix = (product_sum / n_samples) - torch.ger(mean, mean)
+    # Normalize covariance by standard deviation to get correlation
+    correlation_matrix = covariance_matrix / torch.ger(stddev, stddev)
+    
+    return correlation_matrix
+
+def Gaussian_CDF(x):
+    return 0.5 * (1. + torch.erf(x / torch.sqrt(torch.tensor(2.0))))
+
 
 def create_model(args, data_module):
 	"""
@@ -80,11 +143,24 @@ def create_model(args, data_module):
 	
 	elif args.model=='cae': 
 		model = CAE(args)
+  
+	elif args.model=='supervised_cae':
+		model = SupervisedCAE(args)
+
+	elif args.model=='SEFS':
+		# 1. compute correlation matrix from train data module
+		# 2. compute L = Cholesky-decomposition(correlation matrix)
+
+		# Example usage
+		correlation_matrix = compute_correlation_matrix(data_module.train_dataloader())
+		L = torch.linalg.cholesky(correlation_matrix)
+		model = SEFS(args, L)
 
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
 
 	return model
+
 
 
 class ConcreteLayer(nn.Module):
@@ -543,6 +619,159 @@ class TrainingLightningModule(pl.LightningModule):
 			}
 
 
+class MultiBernoulli(nn.Module):
+	def __init__(self, args, L):
+		super().__init__()
+		self.args = args
+		self.L = L
+		mask_init_value = self.args.mask_init_value if self.args.mask_init_value  is not None else 0.5
+		self.pi = torch.full((args.num_features,), mask_init_value, dtype=torch.float32)
+
+	def forward(self, x):
+		"""
+		- x: (batch_size, num_features)
+		Returns:
+		- masked_x: (batch_size, num_features) 
+		- mask: (batch_size, num_features)
+		- pi: (num_features)
+		"""
+		# epsilon ~N(0,1)
+		epsilon = torch.randn_like(x) # size (batch_size, num_features)
+		v = torch.matmul(self.L, epsilon.t()).t()  
+		u = Gaussian_CDF(v) # size (batch_size, num_features)
+		mask = (u <= self.pi).int()
+		return x * mask, mask, torch.sigmoid(self.pi)
+
+class RelaxedMultiBernoulli(nn.Module):
+	def __init__(self, args, L):
+		super().__init__()
+		self.args = args
+		self.L = L
+		self.pi_logit = nn.Parameter(torch.zeros(args.num_features, dtype = torch.float32), requires_grad=True)
+
+	def forward(self, x, test_time=False):
+		"""
+		- x: (batch_size, num_features)
+		Returns:
+		- masked_x: (batch_size, num_features) x*sparsity_weights
+		- mask: (num_features, L)	sparsity_weights
+		- pi: (num_features, L)		sparsity_weights_probs
+		"""
+		pi = torch.sigmoid(self.pi_logit)
+		# epsilon ~N(0,1)
+		# if 	test_time:
+		if False:
+			mask = (self.pi_logit > 0).int()
+		else:
+			epsilon = torch.randn_like(x)
+			v = torch.matmul(self.L, epsilon.t()).t()  
+			u = Gaussian_CDF(v)
+			mask = torch.sigmoid(torch.log(pi) - torch.log(1. - pi) + torch.log(u) - torch.log(1. - u))
+			# mask = torch.ones_like(x) # TODO put this back after debugging
+		return x * mask, self.pi_logit, pi	
+
+	def necessary_features(self):
+		"""
+		Returns the necessary features
+		"""
+		return self.pi_logit > 0
+
+
+
+class SEFS(TrainingLightningModule):
+	def __init__(self, args, L):
+		super().__init__(args)
+		self.args = args
+		self.log_test_key = None
+		self.learning_rate = args.lr
+		self.L = L
+
+		self.pre_mask_module = MultiBernoulli(args, L)
+		self.mask_module = RelaxedMultiBernoulli(args, L)
+
+		self.encoder_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+		
+		# Reconstruction Module: 5 layers with 50 neurons each
+		self.reconstruction_module = ReconstructionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+        
+        # define weights for pre-training task
+		self.mask_predictor_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
+	
+	def pre_forward(self, x):
+		masked_x, mask, _ = self.pre_mask_module(x)
+		# Select the features based on the mask
+
+		encoded_x = self.encoder_module(masked_x)
+		
+		reconstructed_x = self.reconstruction_module(encoded_x)
+		
+		mask_pred = self.mask_predictor_module(reconstructed_x)
+		
+		return reconstructed_x, mask.float(), mask_pred
+	
+	def forward(self, x, test_time = False):
+		masked_x, pi_logits, _ = self.mask_module(x, test_time=test_time)
+		
+		encoded_x = self.encoder_module(masked_x)
+		prediction = self.prediction_module(encoded_x)
+
+		return prediction, None, pi_logits
+
+	def finish_pretraining(self):
+		self.current_iteration = 0
+  
+	def necessary_features(self):
+		"""
+		Returns the necessary features
+		"""
+		return self.mask_module.necessary_features()
+
+
+
+class SupervisedCAE(TrainingLightningModule):
+	def __init__(self, args):
+		super().__init__(args)
+		self.args = args
+		self.log_test_key = None
+		self.learning_rate = args.lr
+		# self.temp_start = 10
+		# self.temp_end = 0.01
+		# the iteration is used in annealing the temperature
+		# 	it's increased with every call to sample during training
+		# self.current_iteration = 0 
+		# self.anneal_iterations = args.concrete_anneal_iterations 
+  
+		if args.num_CAE_neurons is None:
+			args.num_CAE_neurons = int(round( args.num_features * args.CAE_neurons_ratio))
+   
+		self.decoder=True
+		self.first_layer = None
+  
+		self.concrete_layer = ConcreteLayer(args, args.num_features, args.num_CAE_neurons)
+
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = PredictionModule(args, args.num_CAE_neurons, args.num_classes)
+
+    
+	def forward(self, x, test_time=False):
+		"""
+		Forward pass for training
+		"""
+		masked_x, _ = self.concrete_layer(x)	
+				
+		prediction = self.prediction_module(masked_x)
+
+		return prediction, None, None
+
+	def necessary_features(self):
+		"""
+		Returns the necessary features
+		"""
+		return self.concrete_layer.sample(deterministic=True).sum(dim=0) > 0
+
 class CAE(TrainingLightningModule):
 	def __init__(self, args):
 		super().__init__(args)
@@ -680,17 +909,8 @@ class FWAL(TrainingLightningModule):
 		self.reconstruction_module = ReconstructionModule(args, in_dim=args.num_features, out_dim=args.num_features)
         
         # define weights for pre-training task
-		self.mask_predictor_module = nn.Sequential( 
-			nn.Linear(args.num_features, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, 50),
-			nn.ReLU(),
-			nn.Linear(50, args.num_features)  # Last layer outputs num_features
-		)
+		self.mask_predictor_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+
 
 		# Prediction Module: 5 layers with 50 neurons each
 		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
