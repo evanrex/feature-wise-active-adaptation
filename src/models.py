@@ -105,28 +105,95 @@ def aggregate_statistics(data_loader):
 
 	return total_sum, total_square_sum, product_sum, n_samples
 
-def compute_correlation_matrix(data_loader):
-    """
-    Compute the correlation matrix from aggregated statistics.
-    
-    Args:
-    - total_sum, total_square_sum, product_sum: Aggregated statistics from `aggregate_statistics`.
-    - n_samples: Total number of samples.
-    
-    Returns:
-    - Correlation matrix as a 2D torch.Tensor.
-    """
-    total_sum, total_square_sum, product_sum, n_samples = aggregate_statistics(data_loader)
-    mean = total_sum / n_samples
-    variance = (total_square_sum / n_samples) - (mean ** 2)
-    stddev = torch.sqrt(variance)
+def get_blockcorr(X, block_size=10, noise_=0.5):
+    '''
+        noise 0.5 ~ 0.85 correlation
+        noise 1.0 ~ 0.66 correlation
+        X is a PyTorch tensor, potentially on a GPU.
+    '''
+    X_new = None
+    for p in range(X.shape[1]):
+        noise = torch.randn(X.shape[0], block_size-1, device=X.device) * noise_
+        tmp = X[:, [p]] + noise
 
-    # Compute covariance matrix
-    covariance_matrix = (product_sum / n_samples) - torch.ger(mean, mean)
-    # Normalize covariance by standard deviation to get correlation
-    correlation_matrix = covariance_matrix / torch.ger(stddev, stddev)
+        if p == 0:
+            X_new = torch.cat([X[:, [p]], tmp], axis=1)
+        else:
+            X_new = torch.cat([X_new, X[:, [p]], tmp], axis=1)
     
-    return correlation_matrix
+    return X_new
+
+def compute_correlation_matrix(data_loader):
+	"""
+	Compute the correlation matrix from aggregated statistics.
+
+	Args:
+	- total_sum, total_square_sum, product_sum: Aggregated statistics from `aggregate_statistics`.
+	- n_samples: Total number of samples.
+
+	Returns:
+	- Correlation matrix as a 2D torch.Tensor.
+	"""
+	# total_sum, total_square_sum, product_sum, n_samples = aggregate_statistics(data_loader)
+	# mean = total_sum / n_samples
+	# variance = (total_square_sum / n_samples) - (mean ** 2)
+	# stddev = torch.sqrt(variance)
+
+	# # Compute covariance matrix
+	# covariance_matrix = (product_sum / n_samples) - torch.ger(mean, mean)
+	# # Normalize covariance by standard deviation to get correlation
+	# correlation_matrix = covariance_matrix / torch.ger(stddev, stddev)
+	# Check if CUDA is available, and set the device accordingly
+	device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+	# Assuming `data_loader` is your DataLoader instance
+	data_list = []
+	for data, _ in data_loader:
+		data = data.to(device)  # Move data to device
+		# Flatten the data if it's multidimensional per sample
+		data = data.view(data.size(0), -1)  # Reshape data if necessary
+		data_list.append(data)
+
+	# Concatenate all data into a single tensor, also on the correct device
+	UX = torch.cat(data_list, dim=0)
+	# UX   = get_blockcorr(UX)
+ 
+	correlation_matrix = torch.corrcoef(UX.t())
+	# the torch.corrcoeff does not work. Returns an indefinite matrix which is not possible for correlation matrices
+ 
+	    
+	return correlation_matrix
+
+
+def relaxed_cholesky(matrix, epsilon=1e-10, attempts = 0):
+	"""
+	Performs a relaxed Cholesky decomposition on a positive semi-definite matrix.
+
+	Parameters:
+	- matrix: A positive semi-definite matrix.
+	- epsilon: A small value added to the diagonal elements to ensure positive definiteness.
+
+	Returns:
+	- The lower triangular matrix L from the decomposition matrix = L @ L.T
+	"""
+	# Ensure the matrix is square
+	assert matrix.size(0) == matrix.size(1), "Matrix must be square."
+		
+	# Add a small value to the diagonal elements
+	matrix += epsilon * torch.eye(matrix.size(0), device=matrix.device)
+
+	# Perform Cholesky decomposition
+	try:
+		L = torch.linalg.cholesky(matrix)
+	except Exception as a:
+		print(a)
+		print("Cholesky decomposition failed. Using relaxed Cholesky decomposition.")
+		epsilon *= 10
+		if attempts > 10:
+			raise Exception("Relaxed Cholesky decomposition failed after 10 attempts.")
+		return relaxed_cholesky(matrix, epsilon, attempts+1)
+    
+	return L
 
 def Gaussian_CDF(x):
     return 0.5 * (1. + torch.erf(x / torch.sqrt(torch.tensor(2.0))))
@@ -152,7 +219,20 @@ def create_model(args, data_module):
 		# 2. compute L = Cholesky-decomposition(correlation matrix)
 		args.normalize_reconstruction = False
 		correlation_matrix = compute_correlation_matrix(data_module.train_dataloader())
-		L = torch.linalg.cholesky(correlation_matrix)
+		try:
+			L = torch.linalg.cholesky(correlation_matrix)
+		except Exception as e:
+			print(e)
+			print("Cholesky decomposition failed. Using relaxed Cholesky decomposition.")
+			'''
+			This happens when the correlation matrix is not positive definite. By nature of correlation matrices, they cannot be indefinite. 
+   			Therefore the matrix is positive-semidefinite..
+			This can happen if there is perfect multicollinearity between the variables 
+   			(i.e., one variable is a perfect linear combination of others)
+   			or if the number of observed variables exceeds the number of observations. 
+      		In such cases, the matrix will have at least one eigenvalue that is zero, which means it is not positive definite.
+			'''
+			L = relaxed_cholesky(correlation_matrix)
 		model = SEFS(args, L)
 
 	else:
