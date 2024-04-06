@@ -2,22 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: e213af87_LASSO_baseline
+name: a4fb9532_SEFS_GPU
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- lasso
+- SEFS
+- --pretrain
+- --num_pretrain_steps
+- 5000
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC
+- 20 # optimal for HPC GPU
 - --tags
-- f523c9ab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
-- e213af87
+- a4fb9532 
 - --notes
-- "f523c9ab_LASSO_baseline"
+- "a4fb9532_SEFS_GPU"
 - ${args}
 
 method: grid
@@ -28,29 +30,13 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # - gisette 
+    # # - gisette 
     # - Isolet
     # - madelon
     # - USPS
     - PBMC
+    # - MNIST
     
-  lasso_C:
-    distribution: categorical
-    values:
-    - 10
-    - 100
-    - 1000
-  
-  lasso_l1_ratio:
-    distribution: categorical
-    values:
-    - 0
-    - 0.25
-    - 0.5
-    - 0.75
-    - 1
-
-
   seed_model_init:  # number of folds
     distribution: categorical
     values:

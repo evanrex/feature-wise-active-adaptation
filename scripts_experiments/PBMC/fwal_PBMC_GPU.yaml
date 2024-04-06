@@ -2,23 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: e213af87_xgboost_PBMC
+name: e213af87_fwal_pbmc_GPU
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --model
-- xgboost
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --pretrain
+- --num_pretrain_steps
+- 5000
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC CPU
+- 20 # optimal for HPC CPU
 - --tags
-# - 9f41e82a 
--  e213af87
+- e213af87 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-# - "9f41e82a_xgboost_CPU"
-- "e213af87_xgboost_CPU PBMC"
+- "e213af87_fwal"
 - ${args}
 
 method: grid
@@ -29,7 +30,7 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # - gisette 
+    # # - gisette 
     # - Isolet
     # - madelon
     # - USPS

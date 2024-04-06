@@ -15,7 +15,7 @@ command:
 - 5000
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC CPU
+- 20 # optimal for HPC GPU
 - --tags
 - e213af87 
 - --notes
