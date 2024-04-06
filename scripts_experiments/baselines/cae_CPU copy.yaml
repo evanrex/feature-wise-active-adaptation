@@ -2,22 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: e213af87_LASSO_baseline
+name: e213af87_cae
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- lasso
+- cae
+- --pretrain
+- --num_pretrain_steps
+- 5000
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC
+- 1 # optimal for HPC CPU
 - --tags
-- f523c9ab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
-- e213af87
+- e213af87 
 - --notes
-- "f523c9ab_LASSO_baseline"
+- "e213af87_cae"
 - ${args}
 
 method: grid
@@ -25,32 +27,30 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    # - poly_binarised_decimalised_synth
-    # - mice_protein
-    # - COIL20 
+    - poly_binarised_decimalised_synth
+    - mice_protein
+    - COIL20 
     # - gisette 
-    # - Isolet
-    # - madelon
-    # - USPS
-    - PBMC
-    
-  lasso_C:
+    - Isolet
+    - madelon
+    - USPS
+    # - MNIST
+    # - PBMC
+
+  CAE_neurons_ratio:
     distribution: categorical
     values:
-    - 10
-    - 100
-    - 1000
-  
-  lasso_l1_ratio:
-    distribution: categorical
-    values:
-    - 0
-    - 0.25
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
     - 0.5
-    - 0.75
-    - 1
-
-
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+    - 1.0
+    
   seed_model_init:  # number of folds
     distribution: categorical
     values:

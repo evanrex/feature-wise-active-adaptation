@@ -2,14 +2,14 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 6dacbfb8_cae
+name: a4fb9532_SEFS_CPU
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- cae
+- SEFS
 - --pretrain
 - --num_pretrain_steps
 - 5000
@@ -17,9 +17,9 @@ command:
 - --num_workers
 - 1 # optimal for HPC CPU
 - --tags
-- 6dacbfb8 
+- a4fb9532 
 - --notes
-- "6dacbfb8_cae"
+- "a4fb9532_SEFS_CPU"
 - ${args}
 
 method: grid
@@ -27,28 +27,15 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
-    - mice_protein
-    - COIL20 
-    # - gisette 
-    - Isolet
-    - madelon
-    - USPS
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
+    # - COIL20 
+    # # - gisette 
+    # - Isolet
+    # - madelon
+    # - USPS
+    - PBMC
     # - MNIST
-
-  CAE_neurons_ratio:
-    distribution: categorical
-    values:
-    - 0.1
-    - 0.2
-    - 0.3
-    - 0.4
-    - 0.5
-    - 0.6
-    - 0.7
-    - 0.8
-    - 0.9
-    - 1.0
     
   seed_model_init:  # number of folds
     distribution: categorical

@@ -2,22 +2,23 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: e213af87_LASSO_baseline
+name: e213af87_xgboost_PBMC
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- lasso
+- xgboost
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC
+- 1 # optimal for HPC CPU
 - --tags
-- f523c9ab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
-- e213af87
+# - 9f41e82a 
+-  e213af87
 - --notes
-- "f523c9ab_LASSO_baseline"
+# - "9f41e82a_xgboost_CPU"
+- "e213af87_xgboost_CPU PBMC"
 - ${args}
 
 method: grid
@@ -32,24 +33,8 @@ parameters:
     # - Isolet
     # - madelon
     # - USPS
+    # - MNIST
     - PBMC
-    
-  lasso_C:
-    distribution: categorical
-    values:
-    - 10
-    - 100
-    - 1000
-  
-  lasso_l1_ratio:
-    distribution: categorical
-    values:
-    - 0
-    - 0.25
-    - 0.5
-    - 0.75
-    - 1
-
 
   seed_model_init:  # number of folds
     distribution: categorical

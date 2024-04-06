@@ -2,25 +2,21 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 39efeb67_fwal_only_reconstruct_masked_CPU
+name: e213af87_supervised_cae
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --test_time_interventions 
-- evaluate_test_time_interventions
-- --pretrain
-- --num_pretrain_steps
-- 5000
-- --only_reconstruct_masked
+- --model
+- supervised_cae
 - --hpc_run
 - --num_workers
 - 1 # optimal for HPC CPU
 - --tags
-- 39efeb67 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- e213af87 
 - --notes
-- "39efeb67_fwal_only_reconstruct_masked"
+- "e213af87_supervised_cae"
 - ${args}
 
 method: grid
@@ -36,7 +32,22 @@ parameters:
     - madelon
     - USPS
     # - MNIST
+    # - PBMC
 
+  CAE_neurons_ratio:
+    distribution: categorical
+    values:
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+    - 1.0
+    
   seed_model_init:  # number of folds
     distribution: categorical
     values:
