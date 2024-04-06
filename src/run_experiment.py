@@ -613,8 +613,9 @@ def parse_arguments(args=None):
 						default='num_non_masked_features',
 						choices=['None', 'num_features', 'num_non_masked_features'],  
 						help='Normalization method for reconstruction loss. Defaults to None. If "None", then no normalization is performed. If num_features, then divide by the number of features. If num_non_masked_features, then divide by the number of non-masked features.')
-	parser.add_argument('--only_reconstruct_masked', action='store_true', dest='only_reconstruct_masked', default=False, help='If true, only reconstruct features that were masked. Reconstructed features that were not masked are not used. Defaults to false.')
-
+	# parser.add_argument('--only_reconstruct_masked', action='store_true', dest='only_reconstruct_masked', default=True, help='If true, only reconstruct features that were masked. Reconstructed features that were not masked are not used. Defaults to true.')
+	parser.add_argument('--no_only_reconstruct_masked', dest='only_reconstruct_masked', action='store_false', help='If flagged, negates the only_reconstruct_masked flag which says to only reconstruct features that were masked. Reconstructed features that were not masked are not used.')
+	parser.set_defaults(only_reconstruct_masked=True)
 
 
 	####### DKL
