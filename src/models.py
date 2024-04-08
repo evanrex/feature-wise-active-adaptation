@@ -615,6 +615,7 @@ class TrainingLightningModule(pl.LightningModule):
 		'''accommodates multiple dataloaders but only uses first'''
 
 		outputs = self.test_step_outputs[0]
+		self.test_step_outputs.clear()
 
 		### Save losses
 		losses = {
