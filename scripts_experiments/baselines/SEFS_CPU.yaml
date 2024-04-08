@@ -1,0 +1,44 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: c1e340b8_SEFS
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- SEFS
+- --pretrain
+- --num_pretrain_steps
+- 5000
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC CPU
+- --tags
+- c1e340b8 
+- --notes
+- "c1e340b8_SEFS"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - poly_binarised_decimalised_synth
+    - mice_protein
+    - COIL20 
+    - Isolet
+    - madelon
+    - USPS
+    # - MNIST
+    # - PBMC
+    
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
