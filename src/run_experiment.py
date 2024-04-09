@@ -341,11 +341,13 @@ def run_experiment(args):
 				# Convert list of integers to a string of 0s and 1s
 				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
 
-				wandb.log({"best_mask_parameters": model.mask.data})
+				wandb.log({"best_mask_0_parameters": model.mask_0.data})
+				wandb.log({"best_mask_1_parameters": model.mask_1.data})
 				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
 				wandb_logger.log_metrics({
 					'best_mask': mask_as_string_of_ones_and_zeros,
-					'best_mask_parameters': model.mask.data
+					'best_mask_0_parameters': model.mask_0.data,
+					'best_mask_1_parameters': model.mask_1.data
 				})
 
 			elif args.model in ['cae', 'superivsed_cae']:
@@ -616,6 +618,10 @@ def parse_arguments(args=None):
 	# parser.add_argument('--only_reconstruct_masked', action='store_true', dest='only_reconstruct_masked', default=True, help='If true, only reconstruct features that were masked. Reconstructed features that were not masked are not used. Defaults to true.')
 	parser.add_argument('--no_only_reconstruct_masked', dest='only_reconstruct_masked', action='store_false', help='If flagged, negates the only_reconstruct_masked flag which says to only reconstruct features that were masked. Reconstructed features that were not masked are not used.')
 	parser.set_defaults(only_reconstruct_masked=True)
+ 
+	# Hierarchical
+	parser.add_argument('--hierarchical', action='store_true', dest='hierarchical', help='If true, then use hierarchical sparsity')
+	parser.add_argument('--sparsity_regularizer_hyperparam_0', type=float, default=1.0, help='The weight of the sparsity regularizer for the first layer')
 
 
 	####### DKL

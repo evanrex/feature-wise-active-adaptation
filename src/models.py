@@ -206,7 +206,10 @@ def create_model(args, data_module):
 	pl.seed_everything(args.seed_model_init, workers=True)
  
 	if args.model == 'fwal':
-		model = FWAL(args)
+		if args.hierarchical:
+			model = FWAL_Hierarchical(args)
+		else:
+			model = FWAL(args)
 	
 	elif args.model=='cae': 
 		model = CAE(args)
@@ -344,6 +347,24 @@ class TrainingLightningModule(pl.LightningModule):
 		elif args.reconstruction_loss == "bce":
 			self.reconstruction_loss = F.binary_cross_entropy
 
+	def compute_hierarchical_loss(self, y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features):
+		losses = {}
+		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
+  
+		
+		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(reconstructed_x, masked_x_0, reduction='mean')
+		losses['reconstruction'] = (1/torch.sum(reconstructed_features)) * losses['reconstruction']
+    
+		losses['sparsity_0'] = self.args.sparsity_regularizer_hyperparam_0 * torch.norm(sparsity_weights_probs_0, 1)
+		losses['sparsity_1'] = self.args.sparsity_regularizer_hyperparam * torch.norm(sparsity_weights_probs_1, 1)
+  
+		if self.args.normalize_sparsity:
+			losses['sparsity_0'] = (1/len(sparsity_weights_probs_0)) * losses['sparsity_0']
+			losses['sparsity_1'] = (1/len(sparsity_weights_probs_1)) * losses['sparsity_1']
+   
+		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity_0'] + losses['sparsity_1']
+		return losses
+
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
 		losses = {}
 		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
@@ -351,7 +372,7 @@ class TrainingLightningModule(pl.LightningModule):
 		if x_hat is None:
 			losses['reconstruction'] = torch.tensor(0., device=self.device)
 		else:
-			losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='sum') #if self.decoder else torch.zeros(1, device=self.device)
+			losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='mean') # not sure if reduction should be mean or sum TODO
   
 		if sparsity_weights is None:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
@@ -411,9 +432,13 @@ class TrainingLightningModule(pl.LightningModule):
 			f"{key}/total_loss{dataloader_name}": losses['total'].item(),
 			f"{key}/reconstruction_loss{dataloader_name}": losses['reconstruction'].item(),
 			f"{key}/cross_entropy_loss{dataloader_name}": losses['cross_entropy'].item(),
-			f"{key}/sparsity_loss{dataloader_name}": losses['sparsity'].item(),
+			# f"{key}/sparsity_loss{dataloader_name}": losses['sparsity'].item(),
 		}
-		# Log all metrics at once, associating them with num_additional_features
+		if self.args.hierarchical:
+			metrics[f"{key}/sparsity_0_loss{dataloader_name}"] = losses['sparsity_0'].item()
+			metrics[f"{key}/sparsity_1_loss{dataloader_name}"] = losses['sparsity_1'].item()
+		else:
+			metrics[f"{key}/sparsity_loss{dataloader_name}"] = losses['sparsity'].item()
 		self.log_dict(metrics, sync_dist=self.args.hpc_run)
 
 	def log_epoch_metrics(self, outputs, key, dataloader_name=""):
@@ -459,9 +484,13 @@ class TrainingLightningModule(pl.LightningModule):
 		if self.args.pretrain:
 			return self.pre_training_step(batch, batch_idx)
 	
-		y_hat, x_hat, sparsity_weights = self.forward(x)
-
-		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
+		if self.args.hierarchical:
+			y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x)
+			losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+   
+		else:
+			y_hat, x_hat, sparsity_weights = self.forward(x)
+			losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		self.log_losses(losses, key='train')
 		# self.log("train/lr", self.learning_rate)
@@ -524,10 +553,13 @@ class TrainingLightningModule(pl.LightningModule):
 		
 		x, y_true = reshape_batch(batch)
 
-
-		y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
-
-		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
+		if self.args.hierarchical:
+			y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
+			losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+   
+		else:
+			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
+			losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		output = {
 			'losses': detach_tensors(losses),
@@ -574,8 +606,14 @@ class TrainingLightningModule(pl.LightningModule):
 					'total': np.mean([output['losses']['total'].item() for output in outputs]),
 					'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
 					'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
-					'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
+					# 'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
 				}
+				if self.args.hierarchical:
+					losses['sparsity_0'] = np.mean([output['losses']['sparsity_0'].item() for output in outputs])
+					losses['sparsity_1'] = np.mean([output['losses']['sparsity_1'].item() for output in outputs])
+				else:
+					losses['sparsity'] = np.mean([output['losses']['sparsity'].item() for output in outputs])
+     
 				if dataloader_id==0: # original validation dataset
 					dataloader_name=""
 				else:
@@ -584,19 +622,29 @@ class TrainingLightningModule(pl.LightningModule):
 				self.log_losses(losses, key='valid', dataloader_name=dataloader_name)
 				self.log_epoch_metrics(outputs, key='valid', dataloader_name=dataloader_name)
 
-				if self.args.model =='fwal':
-					self.masks.append(self.mask.data.cpu().numpy().copy())
+				# if self.args.model =='fwal':
+				# 	self.masks.append(self.mask.data.cpu().numpy().copy())
      
 		self.validation_step_outputs.clear()
 
 	def test_step(self, batch, batch_idx, dataloader_idx=0):
 		'''accommodates multiple dataloaders'''
 		x, y_true = reshape_batch(batch)
-		if self.args.test_time_interventions_in_progress:
-			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True, k=self.args.num_additional_features)
+  
+		if self.args.hierarchical:
+			if self.args.test_time_interventions_in_progress:
+				y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True, k=self.args.num_additional_features)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+			else:
+				y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+   
 		else:
-			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
-		losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
+			if self.args.test_time_interventions_in_progress:
+				y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True, k=self.args.num_additional_features)
+			else:
+				y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
+			losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
 
 		output =  {
 			'losses': detach_tensors(losses),
@@ -622,8 +670,13 @@ class TrainingLightningModule(pl.LightningModule):
 			'total': np.mean([output['losses']['total'].item() for output in outputs]),
 			'reconstruction': np.mean([output['losses']['reconstruction'].item() for output in outputs]),
 			'cross_entropy': np.mean([output['losses']['cross_entropy'].item() for output in outputs]),
-			'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
+			# 'sparsity': np.mean([output['losses']['sparsity'].item() for output in outputs])
 		}
+		if self.args.hierarchical:
+			losses['sparsity_0'] = np.mean([output['losses']['sparsity_0'].item() for output in outputs])
+			losses['sparsity_1'] = np.mean([output['losses']['sparsity_1'].item() for output in outputs])
+		else:
+			losses['sparsity'] = np.mean([output['losses']['sparsity'].item() for output in outputs])
   
    
 		self.log_losses(losses, key=self.log_test_key)
@@ -976,7 +1029,7 @@ class FWAL(TrainingLightningModule):
 		# 	it's increased with every call to sample during training
 		self.current_iteration = 0 
 		self.anneal_iterations = args.concrete_anneal_iterations 
-		self.masks = []
+		# self.masks = []
 
 		if self.args.mask_init_value is not None:
 			self.mask = nn.Parameter(torch.full((args.num_features,), args.mask_init_value, dtype=torch.float32), requires_grad=True)  
@@ -1146,3 +1199,145 @@ class FWAL(TrainingLightningModule):
 		
 		return prediction
 
+
+
+class FWAL_Hierarchical(TrainingLightningModule):
+	def __init__(self, args):
+		super().__init__(args)
+		self.args = args
+		self.log_test_key = None
+		self.learning_rate = args.lr
+		self.temp_start = 10
+		self.temp_end = 0.01
+		# the iteration is used in annealing the temperature
+		# 	it's increased with every call to sample during training
+		self.current_iteration = 0 
+		self.anneal_iterations = args.concrete_anneal_iterations 
+
+		mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+		self.mask_0 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+		self.mask_1 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+
+   
+		self.decoder=True
+		self.first_layer = None
+
+		# Reconstruction Module: 5 layers with 50 neurons each
+		self.reconstruction_module = ReconstructionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+        
+        # define weights for pre-training task
+		self.mask_predictor_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_features)
+
+
+		# Prediction Module: 5 layers with 50 neurons each
+		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
+    
+	def mask_module(self, x, mask, test_time=False, k=None):
+		"""
+		Constructs the sparsity weights from the mask module
+		
+		Args:
+			x (torch.Tensor): The input tensor.
+			test_time (bool, optional): Flag indicating whether it is test time or not. Defaults to False.
+			k (int, optional): The number of negative values to consider during test time. Defaults to None.
+		
+		Returns:
+			torch.Tensor: The masked input tensor.
+			torch.Tensor: The sparsity weights.
+			torch.Tensor: The sparsity weights probabilities.
+		"""
+
+		if self.args.mask_type == "gumbel_softmax":
+			if test_time:
+				sparsity_weights = (mask > 0).float()
+				if k is not None:
+					flat_mask = mask.flatten()
+					negative_values_mask = flat_mask <= 0
+					negative_values = flat_mask[negative_values_mask]
+					k = min(k, negative_values.size(0))
+					_, topk_indices = torch.topk(-negative_values, k)
+					k_largest_negatives_mask = torch.zeros_like(flat_mask, dtype=torch.float32)
+					k_largest_negatives_mask[negative_values_mask.nonzero().squeeze(1)[topk_indices]] = 1
+					k_largest_negatives_mask = k_largest_negatives_mask.reshape(mask.shape)
+					sparsity_weights += k_largest_negatives_mask
+					sparsity_weights = torch.clamp(sparsity_weights, 0, 1)  # Ensure the mask is still 0 or 1
+
+				sparsity_weights_probs = torch.sigmoid(mask)
+			else:
+				if self.training:
+					self.current_iteration += 1
+				temperature = self.get_temperature()
+				soft_outputs = torch.nn.functional.gumbel_softmax(torch.stack((mask, -1 * mask), dim=1), tau=temperature, hard=False, dim=-1)
+				_, max_indices = soft_outputs.max(dim=-1, keepdim=True)
+				hard_outputs = torch.zeros_like(soft_outputs).scatter_(-1, max_indices, 1.0)[:, 0]
+				soft_outputs = soft_outputs[:, 0]
+				sparsity_weights = hard_outputs - soft_outputs.detach() + soft_outputs
+				sparsity_weights_probs = soft_outputs
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose one of [sigmoid, gumbel_softmax]")
+
+		return x * sparsity_weights, sparsity_weights, sparsity_weights_probs
+
+	def get_temperature(self):
+		# compute temperature		
+		if self.current_iteration >= self.anneal_iterations:
+			return self.temp_end
+		else:
+			return self.temp_start * (self.temp_end / self.temp_start) ** (self.current_iteration / self.anneal_iterations)
+		
+	def pre_forward(self, x):
+		# Ensure pi is a tensor and has the shape compatible with x's features
+		pi_tensor = torch.full(x.shape, self.args.pre_pi, device=x.device, dtype=x.dtype)
+		
+		# Sample from the multivariate Bernoulli distribution
+		mask = torch.bernoulli(pi_tensor)
+		
+		# Select the features based on the mask
+		masked_x = x * mask
+		
+		reconstructed_x = self.reconstruction_module(masked_x)
+		
+		mask_pred = self.mask_predictor_module(reconstructed_x)
+		
+		return reconstructed_x, mask, mask_pred
+    
+	def forward(self, x, test_time=False, k=None):
+		"""
+		Forward pass for training
+		"""
+
+		masked_x_0, sparsity_weights_0, sparsity_weights_probs_0 = self.mask_module(x, self.mask_0, test_time=test_time, k=0)
+		
+		masked_x_1, sparsity_weights_1, sparsity_weights_probs_1 = self.mask_module(masked_x_0, self.mask_1, test_time=test_time, k=k)
+  
+		reconstructed_x = sparsity_weights_0*self.reconstruction_module(masked_x_1)
+  
+		reconstructed_features = sparsity_weights_0*(1-sparsity_weights_1)
+		
+		if self.args.only_reconstruct_masked:
+			reconstructed_x = reconstructed_features*reconstructed_x + sparsity_weights_1*masked_x_1 
+			prediction = self.prediction_module(reconstructed_x)
+		else:
+			raise NotImplementedError("Only reconstruct masked is required for hierarchical FWAL")
+			# prediction = self.prediction_module(reconstructed_x)
+			# reconstructed_x = (1-sparsity_weights_1)*reconstructed_x + sparsity_weights_1*masked_x_1  # only want loss for reconstructed x terms that were masked
+		
+		return prediction, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features
+    
+	def necessary_features(self, k=None):
+		"""
+		k: (int) Defaults to args.num_necessary features. Specifies the number of desired necessary features.
+		Returns a boolean mask for which features are deemed necessary and which are not.
+		"""
+		
+		if self.args.as_MLP_baseline:
+			raise NotImplementedError(f"as_MLP_baseline is not supported for hierarchical")
+		
+		if self.args.mask_type =="gumbel_softmax":
+			return ( self.mask_0 > 0 ) & (self.mask_1 > 0)
+		else:
+			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose gumbel_softmax for hierarchical")
+
+	def finish_pretraining(self):
+		self.current_iteration = 0
+	
