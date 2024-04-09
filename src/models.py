@@ -352,7 +352,7 @@ class TrainingLightningModule(pl.LightningModule):
 		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
   
 		
-		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(reconstructed_x, masked_x_0, reduction='mean')
+		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(reconstructed_x, masked_x_0, reduction='sum')
 		losses['reconstruction'] = (1/torch.sum(reconstructed_features)) * losses['reconstruction']
     
 		losses['sparsity_0'] = self.args.sparsity_regularizer_hyperparam_0 * torch.norm(sparsity_weights_probs_0, 1)
@@ -372,7 +372,7 @@ class TrainingLightningModule(pl.LightningModule):
 		if x_hat is None:
 			losses['reconstruction'] = torch.tensor(0., device=self.device)
 		else:
-			losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='mean') # not sure if reduction should be mean or sum TODO
+			losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(x_hat, x, reduction='sum')
   
 		if sparsity_weights is None:
 			losses['sparsity'] = torch.tensor(0., device=self.device)
