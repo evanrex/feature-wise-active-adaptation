@@ -1232,7 +1232,7 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		# Prediction Module: 5 layers with 50 neurons each
 		self.prediction_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_classes)
     
-	def mask_module(self, x, mask, test_time=False, k=None):
+	def mask_module(self, x, mask, mask_type = "gumbel_softmax", test_time=False, k=None):
 		"""
 		Constructs the sparsity weights from the mask module
 		
@@ -1246,8 +1246,11 @@ class FWAL_Hierarchical(TrainingLightningModule):
 			torch.Tensor: The sparsity weights.
 			torch.Tensor: The sparsity weights probabilities.
 		"""
-
-		if self.args.mask_type == "gumbel_softmax":
+		if mask_type == "sigmoid":
+			sparsity_weights = torch.ones_like(mask)
+			sparsity_weights_probs = torch.sigmoid(mask)
+			return x * sparsity_weights_probs, sparsity_weights, sparsity_weights_probs
+		elif mask_type == "gumbel_softmax":
 			if test_time:
 				sparsity_weights = (mask > 0).float()
 				if k is not None:
@@ -1306,7 +1309,7 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		Forward pass for training
 		"""
 
-		masked_x_0, sparsity_weights_0, sparsity_weights_probs_0 = self.mask_module(x, self.mask_0, test_time=test_time, k=0)
+		masked_x_0, sparsity_weights_0, sparsity_weights_probs_0 = self.mask_module(x, self.mask_0, mask_type='sigmoid',test_time=test_time, k=0)
 		
 		masked_x_1, sparsity_weights_1, sparsity_weights_probs_1 = self.mask_module(masked_x_0, self.mask_1, test_time=test_time, k=k)
   
