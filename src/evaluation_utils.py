@@ -48,7 +48,7 @@ def get_labels_lists(outputs):
 
 def evaluate(model, dataloader):
     outputs = [model.test_step(batch, batch_idx) for batch_idx, batch in enumerate(dataloader)]
-    avg_losses = {loss: np.mean([output['losses'][loss].item() for output in outputs]) for loss in ['total', 'reconstruction', 'cross_entropy', 'sparsity']}
+    avg_losses = {loss: np.mean([output['losses'][loss].item() for output in outputs]) for loss in ['total','cross_entropy']}
     
     metrics = {f"{loss}_loss": avg_losses[loss] for loss in avg_losses}
     y_true, y_pred = get_labels_lists(outputs)
