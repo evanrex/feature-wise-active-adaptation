@@ -1,0 +1,45 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: c1e340b8_fwal_hierarchical
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hierarchical
+- --pretrain
+- --num_pretrain_steps
+- 5000
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- c1e340b8 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "c1e340b8_fwal_hierarchical"
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - poly_binarised_decimalised_synth
+    - mice_protein
+    - COIL20 
+    - Isolet
+    - madelon
+    - USPS
+    # - MNIST
+    # - PBMC
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
