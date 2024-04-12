@@ -1215,8 +1215,13 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		self.anneal_iterations = args.concrete_anneal_iterations 
 
 		mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
-		self.mask_0 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
-		self.mask_1 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+
+		if args.share_mask:
+			self.mask_0 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+			self.mask_1 = self.mask_0
+		else:
+			self.mask_0 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
+			self.mask_1 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
 
    
 		self.decoder=True

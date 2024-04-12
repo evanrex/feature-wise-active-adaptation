@@ -622,6 +622,7 @@ def parse_arguments(args=None):
 	# Hierarchical
 	parser.add_argument('--hierarchical', action='store_true', dest='hierarchical', help='If true, then use hierarchical sparsity')
 	parser.add_argument('--sparsity_regularizer_hyperparam_0', type=float, default=1.0, help='The weight of the sparsity regularizer for the first layer')
+	parser.add_argument('--share_mask', action='store_true', dest='share_mask', help='If true, then share the hierarchical mask')
 
 
 	####### DKL
@@ -991,5 +992,8 @@ if __name__ == "__main__":
 		args.reconstruction_loss = "mse" # mean squared error
   
 	args.test_time_interventions_in_progress = False
+
+	if args.share_mask:
+		args.sparsity_regularizer_hyperparam_0 = 0.0
 
 	run_experiment(args)
