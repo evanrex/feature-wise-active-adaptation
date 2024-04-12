@@ -352,7 +352,11 @@ def load_PBMC(args):
 	y = y.astype(np.int64)
 	return X, y
 	
-    
+def load_finance(args):
+	data = pd.read_csv(f'{args.data_dir}/Finance/finance.csv')
+	X = data.drop(columns=['Class'])
+	Y = data['Class']
+	return X, Y
 
 def load_MNIST(args):
 	dataset = datasets.MNIST(args.data_dir, train=True, download=True)
@@ -875,7 +879,8 @@ def create_data_module(args):
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
                    'mice_protein', 'MNIST',
                    "COIL20", "gisette", "Isolet", "madelon", "USPS",
-                   "PBMC"]:
+                   "PBMC",
+                   "finance"]:
 			if dataset=='lung':
 				X, y = load_lung(args)
 			elif dataset=='toxicity':
@@ -908,6 +913,8 @@ def create_data_module(args):
 				X, y = load_ASU_dataset(args, dataset)
 			elif dataset == "PBMC":
 				X, y = load_PBMC(args)
+			elif dataset == "finance":
+				X, y = load_finance(args)
     
 			if args.restrict_features:
 				if args.chosen_features_list is not None:
