@@ -356,6 +356,8 @@ def load_finance(args):
 	data = pd.read_csv(f'{args.data_dir}/Finance/finance.csv')
 	X = data.drop(columns=['Class'])
 	Y = data['Class']
+	# convert dtype of Y to int
+	Y = Y.astype(int)
 	return X, Y
 
 def load_MNIST(args):
