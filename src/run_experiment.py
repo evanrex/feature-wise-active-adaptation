@@ -793,7 +793,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--suffix_wand_run_name', type=str, default="", help="Suffix for run name in wand")
 	parser.add_argument('--wandb_log_model', action='store_true', dest='wandb_log_model',
 						help='True for storing the model checkpoints in wandb')
-	parser.set_defaults(wandb_log_model=False)
+	parser.set_defaults(wandb_log_model=True)
 	parser.add_argument('--disable_wandb', action='store_true', dest='disable_wandb',
 						help='True if you dont want to crete wandb logs.')
 	parser.set_defaults(disable_wandb=False)
