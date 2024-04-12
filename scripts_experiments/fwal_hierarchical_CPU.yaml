@@ -2,7 +2,7 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: c1e340b8_fwal_hierarchical
+name: c1e340b8_fwal_hierarchical_sigmoid
 
 command:
 - ${env}
