@@ -2,23 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: xgboost_CPU
+name: 9382a057_cae
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- xgboost
+- cae
+- --pretrain
+- --num_pretrain_steps
+- 5000
 - --hpc_run
 - --num_workers
 - 1 # optimal for HPC CPU
 - --tags
-# - 9f41e82a 
--  e213af87
+- 9382a057 
 - --notes
-# - "9f41e82a_xgboost_CPU"
-- "e213af87_xgboost_CPU PBMC"
+- "9382a057_cae"
 - ${args}
 
 method: grid
@@ -26,16 +27,30 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
-    - mice_protein
-    - COIL20 
-    - gisette 
-    - Isolet
-    - madelon
-    - USPS
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
+    # - COIL20 
+    # - Isolet
+    # - madelon
+    # - USPS
     # - MNIST
     # - PBMC
+    - finance
 
+  CAE_neurons_ratio:
+    distribution: categorical
+    values:
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+    - 1.0
+    
   seed_model_init:  # number of folds
     distribution: categorical
     values:

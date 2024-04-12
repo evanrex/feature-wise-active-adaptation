@@ -2,21 +2,21 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: c1e340b8_supervised_cae
+name: 9382a057_rf_baseline
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- supervised_cae
+- rf
 - --hpc_run
 - --num_workers
 - 1 # optimal for HPC CPU
 - --tags
-- c1e340b8
+- 9382a057 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "c1e340b8_supervised_cae"
+- "9382a057_rf_baseline"
 - ${args}
 
 method: grid
@@ -24,29 +24,23 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
-    - mice_protein
-    - COIL20 
-    - Isolet
-    - madelon
-    - USPS
-    # - MNIST
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
+    # - COIL20 
+    # - gisette 
+    # - Isolet
+    # - madelon
+    # - USPS
     # - PBMC
-
-  CAE_neurons_ratio:
+    - finance
+  
+  rf_max_depth:
     distribution: categorical
     values:
-    - 0.1
-    - 0.2
-    - 0.3
-    - 0.4
-    - 0.5
-    - 0.6
-    - 0.7
-    - 0.8
-    - 0.9
-    - 1.0
-    
+    - 3
+    - 5
+    - 7
+
   seed_model_init:  # number of folds
     distribution: categorical
     values:

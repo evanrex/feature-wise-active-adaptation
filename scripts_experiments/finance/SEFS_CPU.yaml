@@ -2,22 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: d18b12cd_rf_baseline
+name: 9382a057_SEFS
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- rf
+- SEFS
+- --pretrain
+- --num_pretrain_steps
+- 5000
 - --hpc_run
 - --num_workers
-- 31 # optimal for HPC
+- 1 # optimal for HPC CPU
 - --tags
-- d18b12cd # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
-- e213af87
+- 9382a057 
 - --notes
-- "d18b12cd_rf_baseline"
+- "9382a057_SEFS"
 - ${args}
 
 method: grid
@@ -28,19 +30,13 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # - gisette 
     # - Isolet
     # - madelon
     # - USPS
-    - PBMC
-  
-  rf_max_depth:
-    distribution: categorical
-    values:
-    - 3
-    - 5
-    - 7
-
+    # - MNIST
+    # - PBMC
+    - finance
+    
   seed_model_init:  # number of folds
     distribution: categorical
     values:

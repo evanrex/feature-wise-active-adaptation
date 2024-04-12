@@ -2,22 +2,21 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: c3db0e5e_supervised_cae
+name: 9382a057_LASSO_baseline
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
 - --model
-- supervised_cae
+- lasso
 - --hpc_run
 - --num_workers
-- 20 # optimal for HPC GPU
-- --no_persistent_workers # crashing when we have persistent workers
+- 1 # optimal for HPC CPU
 - --tags
-- c3db0e5e 
+- 9382a057 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
 - --notes
-- "c3db0e5e_supervised_cae"
+- "9382a057_LASSO_baseline"
 - ${args}
 
 method: grid
@@ -28,26 +27,30 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # # - gisette 
+    # - gisette 
     # - Isolet
     # - madelon
     # - USPS
-    - MNIST
-
-  CAE_neurons_ratio:
+    # - PBMC
+    - finance
+    
+  lasso_C:
     distribution: categorical
     values:
-    - 0.1
-    - 0.2
-    - 0.3
-    - 0.4
+    - 10
+    - 100
+    - 1000
+  
+  lasso_l1_ratio:
+    distribution: categorical
+    values:
+    - 0
+    - 0.25
     - 0.5
-    - 0.6
-    - 0.7
-    - 0.8
-    - 0.9
-    - 1.0
-    
+    - 0.75
+    - 1
+
+
   seed_model_init:  # number of folds
     distribution: categorical
     values:
