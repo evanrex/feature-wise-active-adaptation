@@ -341,14 +341,22 @@ def run_experiment(args):
 				# Convert list of integers to a string of 0s and 1s
 				mask_as_string_of_ones_and_zeros = ''.join(str(i) for i in int_list)
 
-				wandb.log({"best_mask_0_parameters": model.mask_0.data})
-				wandb.log({"best_mask_1_parameters": model.mask_1.data})
-				wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
-				wandb_logger.log_metrics({
-					'best_mask': mask_as_string_of_ones_and_zeros,
-					'best_mask_0_parameters': model.mask_0.data,
-					'best_mask_1_parameters': model.mask_1.data
-				})
+				if args.hierarchical and not args.as_MLP_baseline:
+					wandb.log({"best_mask_0_parameters": model.mask_0.data})
+					wandb.log({"best_mask_1_parameters": model.mask_1.data})
+					wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+					wandb_logger.log_metrics({
+						'best_mask': mask_as_string_of_ones_and_zeros,
+						'best_mask_0_parameters': model.mask_0.data,
+						'best_mask_1_parameters': model.mask_1.data
+					})
+				else:
+					wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
+					wandb.log({"best_mask_parameters": model.mask.data})
+					wandb_logger.log_metrics({
+						'best_mask': mask_as_string_of_ones_and_zeros,
+						'best_mask_parameters': model.mask.data,
+					})
 
 			elif args.model in ['cae', 'superivsed_cae']:
 				model.eval()
