@@ -623,6 +623,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--hierarchical', action='store_true', dest='hierarchical', help='If true, then use hierarchical sparsity')
 	parser.add_argument('--sparsity_regularizer_hyperparam_0', type=float, default=1.0, help='The weight of the sparsity regularizer for the first layer')
 	parser.add_argument('--share_mask', action='store_true', dest='share_mask', help='If true, then share the hierarchical mask')
+	parser.add_argument('--sigmoid_loss', action='store_true', dest='sigmoid_loss', help='If true, then will minimize the sigmoid activation of the shared mask instead of the soft gumbel activation')
 
 
 	####### DKL
@@ -994,6 +995,11 @@ if __name__ == "__main__":
 	args.test_time_interventions_in_progress = False
 
 	if args.share_mask:
-		args.sparsity_regularizer_hyperparam_0 = 0.0
+		if args.sigmoid_loss:
+			# Using the sigmoid activation of the mask to get the sparsity loss
+			args.sparsity_regularizer_hyperparam = 0.0
+		else:
+			# Using the soft gumbel activation of the mask to get the sparsity loss
+			args.sparsity_regularizer_hyperparam_0 = 0.0
 
 	run_experiment(args)
