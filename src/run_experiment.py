@@ -632,6 +632,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--sparsity_regularizer_hyperparam_0', type=float, default=1.0, help='The weight of the sparsity regularizer for the first layer')
 	parser.add_argument('--share_mask', action='store_true', dest='share_mask', help='If true, then share the hierarchical mask')
 	parser.add_argument('--sigmoid_loss', action='store_true', dest='sigmoid_loss', help='If true, then will minimize the sigmoid activation of the shared mask instead of the soft gumbel activation')
+	parser.add_argument('--tti_loss_hyperparam', type=float, default=1.1, help='The weight of the tti component of the cross entropy loss')
 
 
 	####### DKL

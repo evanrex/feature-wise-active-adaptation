@@ -347,9 +347,12 @@ class TrainingLightningModule(pl.LightningModule):
 		elif args.reconstruction_loss == "bce":
 			self.reconstruction_loss = F.binary_cross_entropy
 
-	def compute_hierarchical_loss(self, y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features):
+	def compute_hierarchical_loss(self, y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features):
 		losses = {}
-		losses['cross_entropy'] = F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
+		losses['cross_entropy'] = (
+      							F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
+        						+ self.args.tti_loss_hyperparam * F.cross_entropy(input=y_hat_tti, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
+                				)/(1+self.args.tti_loss_hyperparam)
   
 		
 		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(reconstructed_x, masked_x_0, reduction='sum')
@@ -485,8 +488,8 @@ class TrainingLightningModule(pl.LightningModule):
 			return self.pre_training_step(batch, batch_idx)
 	
 		if self.args.hierarchical:
-			y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x)
-			losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+			y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x)
+			losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
    
 		else:
 			y_hat, x_hat, sparsity_weights = self.forward(x)
@@ -554,8 +557,8 @@ class TrainingLightningModule(pl.LightningModule):
 		x, y_true = reshape_batch(batch)
 
 		if self.args.hierarchical:
-			y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
-			losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+			y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
+			losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
    
 		else:
 			y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
@@ -633,11 +636,11 @@ class TrainingLightningModule(pl.LightningModule):
   
 		if self.args.hierarchical:
 			if self.args.test_time_interventions_in_progress:
-				y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True, k=self.args.num_additional_features)
-				losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+				y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True, k=self.args.num_additional_features)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
 			else:
-				y_hat, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
-				losses = self.compute_hierarchical_loss(y_true, y_hat, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
+				y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features = self.forward(x, test_time=True)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features)
    
 		else:
 			if self.args.test_time_interventions_in_progress:
@@ -1312,6 +1315,15 @@ class FWAL_Hierarchical(TrainingLightningModule):
 	def forward(self, x, test_time=False, k=None):
 		"""
 		Forward pass for training
+		Returns:
+		- prediction: The output of the prediction module. f_p(f_r(m_1(m_0(x))))
+		- intervened_prediction: The output of the prediction module with full test-time intervention. Works by predicting from feature selected input tensor: f_p(m_0(x))
+		- reconstructed_x: The reconstruction of the feature selected input tensor, masked_x_0. f_r(m_1(m_0(x)))
+		- masked_x_0: The feature selected input tensor. i.e.: the input tensor with the first mask applied: m_0(x)
+		- sparsity_weights_probs_0: The sparsity weights probabilities for the first mask. In the case of gumbel these are the soft probabilites. In the case of sigmoid this is the actual mask: m_0.weights
+		- sparsity_weights_probs_1: The sparsity weights probabilities for the second mask. In the case of gumbel these are the soft probabilites. In the case of sigmoid this is the actual mask. m_1.weights
+		- reconstructed_features: The features that end up being reconstructed by the reconstruction module
+
 		"""
 
 		masked_x_0, sparsity_weights_0, sparsity_weights_probs_0 = self.mask_module(x, self.mask_0, mask_type='sigmoid',test_time=test_time, k=0)
@@ -1325,12 +1337,13 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		if self.args.only_reconstruct_masked:
 			reconstructed_x = reconstructed_features*reconstructed_x + sparsity_weights_1*masked_x_1 
 			prediction = self.prediction_module(reconstructed_x)
+			intervened_prediction = self.prediction_module(masked_x_0)
 		else:
 			raise NotImplementedError("Only reconstruct masked is required for hierarchical FWAL")
 			# prediction = self.prediction_module(reconstructed_x)
 			# reconstructed_x = (1-sparsity_weights_1)*reconstructed_x + sparsity_weights_1*masked_x_1  # only want loss for reconstructed x terms that were masked
 		
-		return prediction, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features
+		return prediction, intervened_prediction, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features
     
 	def necessary_features(self, k=None):
 		"""
