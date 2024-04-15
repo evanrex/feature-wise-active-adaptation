@@ -347,8 +347,10 @@ def run_experiment(args):
 					wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})
 					wandb_logger.log_metrics({
 						'best_mask': mask_as_string_of_ones_and_zeros,
-						'best_mask_0_parameters': model.mask_0.data,
-						'best_mask_1_parameters': model.mask_1.data
+						'best_mask_0_histogram': model.mask_0.data,
+						'best_mask_1_histogram': model.mask_1.data,
+						'best_mask_0_parameters': model.mask_0.data.tolist(),
+						'best_mask_1_parameters': model.mask_1.data.tolist(),
 					})
 				else:
 					wandb.log({"best_mask":mask_as_string_of_ones_and_zeros})

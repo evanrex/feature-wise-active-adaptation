@@ -358,14 +358,15 @@ class TrainingLightningModule(pl.LightningModule):
 		losses['reconstruction'] = self.args.gamma * self.reconstruction_loss(reconstructed_x, masked_x_0, reduction='sum')
 		losses['reconstruction'] = (1/torch.sum(reconstructed_features)) * losses['reconstruction']
     
-		losses['sparsity_0'] = self.args.sparsity_regularizer_hyperparam_0 * torch.norm(sparsity_weights_probs_0, 1)
-		losses['sparsity_1'] = self.args.sparsity_regularizer_hyperparam * torch.norm(sparsity_weights_probs_1, 1)
+		# losses['sparsity_0'] = self.args.sparsity_regularizer_hyperparam_0 * torch.norm(sparsity_weights_probs_0, 1)
+		losses['sparsity_0']  = torch.tensor(0., device=self.device)
+		losses['sparsity_1'] = self.args.sparsity_regularizer_hyperparam * (torch.norm(sparsity_weights_probs_0, 1) + torch.norm(sparsity_weights_probs_1, 1))
   
 		if self.args.normalize_sparsity:
 			losses['sparsity_0'] = (1/len(sparsity_weights_probs_0)) * losses['sparsity_0']
-			losses['sparsity_1'] = (1/len(sparsity_weights_probs_1)) * losses['sparsity_1']
+			losses['sparsity_1'] = (1/(len(sparsity_weights_probs_0) + len(sparsity_weights_probs_1))) * losses['sparsity_1']
    
-		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity_0'] + losses['sparsity_1']
+		losses['total'] = losses['cross_entropy'] + losses['reconstruction'] + losses['sparsity_1']
 		return losses
 
 	def compute_loss(self, y_true, y_hat, x, x_hat, sparsity_weights):
@@ -1355,7 +1356,7 @@ class FWAL_Hierarchical(TrainingLightningModule):
 			raise NotImplementedError(f"as_MLP_baseline is not supported for hierarchical")
 		
 		if self.args.mask_type =="gumbel_softmax":
-			return ( self.mask_0 > 0 ) & (self.mask_1 > 0)
+			return (self.mask_1 > 0)
 		else:
 			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose gumbel_softmax for hierarchical")
 
