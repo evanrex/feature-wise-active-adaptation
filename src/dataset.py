@@ -343,13 +343,15 @@ def load_ASU_dataset(args, dataset):
 	return X, y	
 
 def load_PBMC(args):
-	import scvi # type: ignore
-	adata = scvi.data.purified_pbmc_dataset(save_path=args.data_dir)
-	adata = adata[adata.obs['cell_types'].isin(['naive_t', 'regulatory_t'])]
-	X = adata.X.toarray()
-	y = np.array(adata.obs['cell_types'].map({'naive_t': 0, 'regulatory_t': 1}).values)
-	X = X.astype(np.float64)
+	X = np.loadtxt(os.path.join(args.data_dir, "PBMC_X.csv"), delimiter=",")
+	y = np.loadtxt(os.path.join(args.data_dir, "PBMC_y.csv"), delimiter=",")
+ 
+	X = X.astype(np.float32)
 	y = y.astype(np.int64)
+ 
+	assert X.shape == (2075, 21932)
+	assert y.shape == (2075,)
+ 
 	return X, y
 	
 def load_finance(args):
