@@ -27,8 +27,10 @@ from dataset import *
 from models import *
 from _config import DATA_DIR
 from evaluation_utils import *
-
+import os
 import glob
+
+os.environ["WANDB__SERVICE_WAIT"] = "300"
 
 def get_run_name(args):
 	if args.model=='dnn':
