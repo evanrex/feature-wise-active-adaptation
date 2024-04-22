@@ -141,6 +141,11 @@ def run_experiment(args):
 						class_weight=class_weights, max_iter=10000,
 						random_state=args.seed_model_init, solver='saga', verbose=True)
 			model.fit(data_module.X_train, data_module.y_train)
+			importance = model.coef_  # This is a 2D array of shape (n_classes, n_features)
+			# Log each class's feature importances as a separate entry
+			for class_index in range(importance.shape[0]):
+				importance_dict = {f'feature_{i}': importance[class_index, i] for i in range(importance.shape[1])}
+				wandb.log({f'class_{class_index}_importances': importance_dict})
 
 		elif args.model == 'rf':
 			model = RandomForestClassifier(n_estimators=args.rf_n_estimators, 
@@ -148,6 +153,11 @@ def run_experiment(args):
 						class_weight=class_weights, max_features='sqrt',
 						random_state=args.seed_model_init, verbose=True)
 			model.fit(data_module.X_train, data_module.y_train)
+			importance = model.feature_importances_  # This is a 1D array of shape (n_features,)
+			# Create a dictionary of feature importances
+			importance_dict = {f'feature_{i}': importance[i] for i in range(len(importance))}
+			# Log the dictionary of feature importances to wandb
+			wandb.log({'feature_importances': importance_dict})
 
 		elif args.model == 'lgb':
 			params = {
@@ -242,7 +252,11 @@ def run_experiment(args):
 				device='cuda'
 			)
 			model.fit(data_module.X_train, data_module.y_train, eval_set=[(data_module.X_valid, data_module.y_valid)], verbose=True)	
-   
+			importance = model.feature_importances_
+			importance_dict = {f'feature_{i}': importance[i] for i in range(len(importance))}
+			# Log the dictionary of feature importances to wandb
+			wandb.log({'feature_importances': importance_dict})
+
 		#### Log metrics
 		y_pred_train = model.predict(data_module.X_train)
 		y_pred_valid = model.predict(data_module.X_valid)
@@ -588,7 +602,7 @@ def parse_arguments(args=None):
 
 	####### Scikit-learn parameters
 	parser.add_argument('--lasso_C', type=float, default=1e3, help='lasso regularization parameter')
-	parser.add_argument('--lasso_l1_ratio', type=float, default=1e3, help='lasso l1 ratio parameter') 
+	parser.add_argument('--lasso_l1_ratio', type=float, default=1.0, help='lasso l1 ratio parameter') 
 
 	parser.add_argument('--rf_n_estimators', type=int, default=500, help='number of trees in the random forest')
 	parser.add_argument('--rf_max_depth', type=int, default=5, help='maximum depth of the tree')
