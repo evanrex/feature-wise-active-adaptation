@@ -349,7 +349,7 @@ class TrainingLightningModule(pl.LightningModule):
 
 	def compute_hierarchical_loss(self, y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features, intervened_features):
 		losses = {}
-		T = torch.sum(intervened_features)
+		T = torch.sum(intervened_features) if self.args.tti_loss_hyperparam != 1 else 1
 		losses['cross_entropy'] = (
       							F.cross_entropy(input=y_hat, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))
         						+ (self.args.tti_loss_hyperparam**T) * F.cross_entropy(input=y_hat_tti, target=y_true, weight=torch.tensor(self.args.class_weights, device=self.device))

@@ -658,7 +658,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--share_mask', action='store_true', dest='share_mask', help='If true, then share the hierarchical mask')
 	parser.add_argument('--sigmoid_loss', action='store_true', dest='sigmoid_loss', help='If true, then will minimize the sigmoid activation of the shared mask instead of the soft gumbel activation')
 	parser.add_argument('--tti_loss_hyperparam', type=float, default=1.1, help='The weight of the tti component of the cross entropy loss')
-	parser.add_argument('--selection_threshold', type=float, default=0.1, help='The selection threshold for the sigmoidal feature selection mask. (layer 0 mask). Float between 0 and 1. Set to 0 for no thresholding.')
+	parser.add_argument('--selection_threshold', type=float, default=0.0, help='The selection threshold for the sigmoidal feature selection mask. (layer 0 mask). Float between 0 and 1. Set to 0 for no thresholding.')
 
 
 	####### DKL
@@ -845,6 +845,8 @@ def parse_arguments(args=None):
   
 	if args.dataset=="MNIST":
 		args.patient_preprocessing = "raw"
+	elif args.dataset in ['PBMC', 'PBMC_small']:
+		args.tti_loss_hyperparam = 1
 
 	return args
 
