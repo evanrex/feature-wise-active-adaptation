@@ -83,7 +83,31 @@ def evaluate_test_time_interventions(model, data_module, args, wandb_logger):
             'tti_test_metrics': test_metrics
         })
 
-
+def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger):
+    
+    
+    for fraction in np.linspace(0.0,0.9,10):
+        removed_features = data_module.gen_MNAR_datasets(feature_importance, fraction)
+        if args.model == "fwal":
+            if not args.hierarchical:
+                raise ValueError("Feature selection is only supported for hierarchical models")
+            model.update_masks(removed_features)
+        valid_metrics = evaluate(model, data_module.missing_val_dataloader())
+        test_metrics = evaluate(model, data_module.missing_test_dataloader())
+        
+        wandb_logger.log_metrics({
+            'fraction_missing_features': fraction,
+            'feature_selection_valid_metrics': valid_metrics,
+            'feature_selection_test_metrics': test_metrics
+        })
+    
+    if args.model == "fwal":
+        if not args.hierarchical:
+            raise ValueError("Feature selection is only supported for hierarchical models")
+        model.update_masks(None)
+        
+    
+    
 def assist_test_time_interventions(model, data_module, args, wandb_logger):
     '''
     Generate data for plot of varying num necessary features for the sigmoidal mask. 

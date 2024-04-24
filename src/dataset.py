@@ -841,11 +841,12 @@ class DatasetModule(pl.LightningDataModule):
 		else:
 			raise Exception("Invalid embedding type")
 
-	def gen_MCAR_datasets(self, fraction = 0.1, seed = 0):
+	def gen_MCAR_datasets(self, fraction = 0.1, seed = 0, replace_val = 0):
 		"""
 		Missing data mechanism
 		- fraction (float): percentage of missing values
 		- seed (int): seed for reproducibility
+		- replace_val: 0 or np.nan for example
 		"""
 		np.random.seed(seed)
   
@@ -855,54 +856,60 @@ class DatasetModule(pl.LightningDataModule):
    
 
 		self.X_train_missing = self.X_train.copy()
-		self.X_train_missing[missing_mask_train==1] = np.nan
+		self.X_train_missing[missing_mask_train==1] = replace_val
   
 		self.X_valid_missing = self.X_valid.copy()
-		self.X_valid_missing[missing_mask_valid==1] = np.nan
+		self.X_valid_missing[missing_mask_valid==1] = replace_val
 
 		self.X_test_missing = self.X_test.copy()
-		self.X_test_missing[missing_mask_test==1] = np.nan
-  
-	def gen_MNAR_datasets(self, feature_importance, fraction = 0.1, seed = 0):
+		self.X_test_missing[missing_mask_test==1] = replace_val
+
+	def gen_MNAR_datasets(self, feature_importance, fraction=0.1, replace_val=0):
 		"""
 		Missing data mechanism
 		- feature_importance (np.ndarray): importance of each feature
-		- fraction (float): percentage of missing values. In [0,1]
-  		- seed (int): seed for reproducibility
-    
-		removes the fraction of features from the dataset, starting with the least important
-		"""
-		np.random.seed(seed)
+		- fraction (float): percentage of missing values in [0,1]
+		- replace_val (int or float): value used to replace missing entries, e.g., 0 or np.nan
 
+		Removes the fraction of entire features from the dataset, starting with the least important,
+		and replaces those entire feature columns with replace_val.
+		"""
 		# Calculate the threshold to select features with low importance
 		sorted_indices = np.argsort(feature_importance)  # sort features by importance
 		num_features_to_remove = int(np.ceil(fraction * len(feature_importance)))
 		features_to_remove = sorted_indices[:num_features_to_remove]  # select the least important features
 
-		# Generate masks for the train, valid, and test sets based on selected features
-		masks = {}
+		# Apply changes to each dataset
 		for dataset_name in ['train', 'valid', 'test']:
+			attr_name = f'X_{dataset_name}_missing'
+			if hasattr(self, attr_name):
+				delattr(self, attr_name)
+
 			dataset = getattr(self, f'X_{dataset_name}')
-			mask = np.ones(dataset.shape, dtype=bool)
-			mask[:, features_to_remove] = False  # Set mask to False for features to remove
-
-			# Randomly select entries to set as missing in these features
-			for feature_index in features_to_remove:
-				num_missing = int(np.ceil(fraction * dataset.shape[0]))  # Number of entries to make missing in this feature
-				missing_indices = np.random.choice(dataset.shape[0], num_missing, replace=False)
-				mask[missing_indices, feature_index] = False
-
-			# Apply mask to the dataset
 			dataset_missing = dataset.copy()
-			dataset_missing[~mask] = np.nan  # Set selected entries to NaN
-			setattr(self, f'X_{dataset_name}_missing', dataset_missing)
+			dataset_missing[:, features_to_remove] = replace_val  # Set entire columns to replace_val
 
-			# Save the mask for possible debugging or analysis
-			masks[f'{dataset_name}_mask'] = mask
+			setattr(self, attr_name, dataset_missing)
+   
+			removed_features_mask = np.zeros_like(feature_importance, dtype=int)
 
-		return masks
-     
-  
+			# Set the indices in features_to_remove to 1
+			removed_features_mask[features_to_remove] = 1
+
+		return torch.Tensor(removed_features_mask)
+
+	def missing_val_dataloader(self):
+		self.missing_valid_dataset = CustomPytorchDataset(self.X_valid_missing, self.y_valid)
+
+		return DataLoader(self.missing_valid_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
+
+	def missing_test_dataloader(self):
+		self.missing_test_dataset = CustomPytorchDataset(self.X_test_missing, self.y_test)
+
+		return DataLoader(self.missing_test_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
+
 
 def create_data_module(args):
 	if "__" in args.dataset:	# used when instantiang the model from wandb artifacts

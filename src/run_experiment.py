@@ -397,6 +397,12 @@ def run_experiment(args):
 					'best_mask_parameters': model.mask_module.pi_logit.data
 				})
 			
+			if args.evaluate_feature_selection:
+				
+				if args.model != "fwal" and not args.hierarchical:
+					raise ValueError("Feature selection is only supported for hierarchical F-Act")
+				feature_importance = model.feature_importance()
+				evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
 			if args.test_time_interventions == "evaluate_test_time_interventions":
 				# We have just loaded the best model weights for fwal in the prev if statement
 				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
@@ -777,6 +783,9 @@ def parse_arguments(args=None):
 	parser.add_argument('--test_time_interventions', type=str, choices = ['evaluate_test_time_interventions', 'assist_test_time_interventions'], default=None, help='choose one of [evaluate_test_time_interventions]. Remember to choose a run with --trained_FWAL_model_run_name')
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
+	parser.add_argument('--evaluate_feature_selection', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
+
+
 
 	####### Optimization
 	parser.add_argument('--optimizer', type=str, choices=['adam', 'adamw'], default='adamw')

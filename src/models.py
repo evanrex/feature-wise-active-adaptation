@@ -1223,6 +1223,7 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		self.selection_threshold = args.selection_threshold
 
 		mask_generator = torch.Generator().manual_seed(args.seed_model_mask)
+		self.missing_features = None
 
 		if args.share_mask:
 			self.mask_0 = nn.Parameter(torch.randn(args.num_features, generator=mask_generator), requires_grad=True)
@@ -1349,7 +1350,13 @@ class FWAL_Hierarchical(TrainingLightningModule):
 		reconstructed_features = sparsity_weights_0*(1-sparsity_weights_1)
 		
 		if self.args.only_reconstruct_masked:
-			reconstructed_x = reconstructed_features*reconstructed_x + sparsity_weights_1*masked_x_1 
+			
+			if test_time and self.missing_features is not None:
+				# change reconstructed_features to take into account features that are missing.
+				reconstructed_features = (reconstructed_features.int() | self.missing_features.int()).float()
+				# this way we treat missing features as features that were reconstructed
+   
+			reconstructed_x = reconstructed_features*reconstructed_x + (1-reconstructed_features)*masked_x_1 
 			prediction = self.prediction_module(reconstructed_x)
    
 			# interventions
@@ -1377,6 +1384,19 @@ class FWAL_Hierarchical(TrainingLightningModule):
 			return (self.mask_1 > 0)
 		else:
 			raise NotImplementedError(f"mask_type: <{self.args.mask_type}> is not supported. Choose gumbel_softmax for hierarchical")
+
+	def feature_importance(self):
+		"""
+		Returns the feature importance
+		- np.ndarray: The feature importance
+		"""
+		return self.mask_0.detach().cpu().numpy()
+
+	def update_masks(self, missing_features):
+		if missing_features is None or sum(missing_features) == 0:
+			self.missing_features = None
+		else:
+			self.missing_features = missing_features.int()
 
 	def finish_pretraining(self):
 		self.current_iteration = 0
