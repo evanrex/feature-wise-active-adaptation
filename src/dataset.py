@@ -353,6 +353,15 @@ def load_PBMC(args):
 	assert y.shape == (2075,)
  
 	return X, y
+
+def load_PBMC_small(args):
+	X = np.loadtxt(os.path.join(args.data_dir, "PBMC_small_X.csv"), delimiter=",")
+	y = np.loadtxt(os.path.join(args.data_dir, "PBMC_small_y.csv"), delimiter=",")
+ 
+	X = X.astype(np.float32)
+	y = y.astype(np.int64)
+ 
+	return X, y
 	
 def load_finance(args):
 	data = pd.read_csv(f'{args.data_dir}/Finance/finance.csv')
@@ -945,7 +954,7 @@ def create_data_module(args):
                    'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
                    'mice_protein', 'MNIST',
                    "COIL20", "gisette", "Isolet", "madelon", "USPS",
-                   "PBMC",
+                   "PBMC", "PBMC_small",
                    "finance"]:
 			if dataset=='lung':
 				X, y = load_lung(args)
@@ -979,6 +988,8 @@ def create_data_module(args):
 				X, y = load_ASU_dataset(args, dataset)
 			elif dataset == "PBMC":
 				X, y = load_PBMC(args)
+			elif dataset == "PBMC_small":
+				X, y = load_PBMC_small(args)
 			elif dataset == "finance":
 				X, y = load_finance(args)
     

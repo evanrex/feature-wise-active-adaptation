@@ -589,7 +589,14 @@ def parse_arguments(args=None):
 								then the hidden representation will be the representation after the two layers [100, 100])')
 	parser.add_argument('--as_MLP_baseline', action='store_true', dest='as_MLP_baseline', help='Set to true with --model=fwal if want to train FWAL model as a plain MLP ')
 
-
+	parser.add_argument('--R_num_hidden', type=int, default=4,
+						help='Number of hidden layers in the Reconstruction Module')
+	parser.add_argument('--R_hidden_dim', type=int, default=50,
+						help='Dimension of each hidden layer in the Reconstruction Module')
+	parser.add_argument('--P_num_hidden', type=int, default=4,
+						help='Number of hidden layers in the Prediction Module')
+	parser.add_argument('--P_hidden_dim', type=int, default=50,
+						help='Dimension of each hidden layer in the Prediction Module')
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
 	parser.add_argument('--gamma', type=float, default=1.0, 
@@ -907,7 +914,7 @@ if __name__ == "__main__":
 		'MNIST',
 		'mice_protein',
   		"COIL20", "gisette", "Isolet", "madelon", "USPS",
-		"PBMC",
+		"PBMC", "PBMC_small",
 		"finance"
 	]
 	if args.dataset not in SUPPORTED_DATASETS:
