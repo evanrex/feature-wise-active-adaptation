@@ -1,0 +1,1 @@
+for file in slurm_scripts/PBMC_cpu/*.sh; do sbatch "$file"; done

@@ -2,26 +2,23 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 25dd6c14_fwal_hierarchical_tti_loss
+name: fc05ccd7_xgboost_PBMC
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --test_time_interventions 
-- evaluate_test_time_interventions
-- --hierarchical
-- --pretrain
-- --num_pretrain_steps
-- 5000
+- --model
+- xgboost
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC
+- 1 # optimal for HPC CPU
 - --tags
-- 25dd6c14 # FWAL hierarchical TTI all datasets
-- fc05ccd7 # PBMC
+# - 9f41e82a 
+-  fc05ccd7
 - --notes
-- "25dd6c14_fwal_hierarchical_tti_loss"
+# - "9f41e82a_xgboost_CPU"
+- "fc05ccd7_xgboost_GPU PBMC"
 - ${args}
 
 method: grid
@@ -35,20 +32,8 @@ parameters:
     - Isolet
     - madelon
     - USPS
-    # - MNIST
+    - MNIST
     - PBMC
-    - finance
-
-  sparsity_regularizer_hyperparam:
-    distribution: categorical
-    values:
-    - 0.0
-    - 0.1
-    - 0.5
-    - 1.0
-    - 2.0
-    - 10.0
-    - 100.0
 
   seed_model_init:  # number of folds
     distribution: categorical

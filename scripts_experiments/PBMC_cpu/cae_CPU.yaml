@@ -2,26 +2,24 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 25dd6c14_fwal_hierarchical_tti_loss
+name: fc05ccd7_cae_PBMC
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --test_time_interventions 
-- evaluate_test_time_interventions
-- --hierarchical
+- --model
+- cae
 - --pretrain
 - --num_pretrain_steps
 - 5000
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC
+- 1 # optimal for HPC CPU
 - --tags
-- 25dd6c14 # FWAL hierarchical TTI all datasets
-- fc05ccd7 # PBMC
+- fc05ccd7 
 - --notes
-- "25dd6c14_fwal_hierarchical_tti_loss"
+- "fc05ccd7_cae PBMC"
 - ${args}
 
 method: grid
@@ -29,27 +27,30 @@ parameters:
   dataset:
     distribution: categorical
     values:
-    - poly_binarised_decimalised_synth
-    - mice_protein
-    - COIL20 
-    - Isolet
-    - madelon
-    - USPS
-    # - MNIST
+    # - poly_binarised_decimalised_synth
+    # - mice_protein
+    # - COIL20 
+    # # - gisette 
+    # - Isolet
+    # - madelon
+    # - USPS
+    # # - MNIST
     - PBMC
-    - finance
 
-  sparsity_regularizer_hyperparam:
+  CAE_neurons_ratio:
     distribution: categorical
     values:
-    - 0.0
     - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
     - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
     - 1.0
-    - 2.0
-    - 10.0
-    - 100.0
-
+    
   seed_model_init:  # number of folds
     distribution: categorical
     values:
