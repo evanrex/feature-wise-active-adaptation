@@ -88,12 +88,20 @@ def evaluate_feature_selection(model, feature_importance, data_module, args, wan
     
     for fraction in np.linspace(0.0,0.9,10):
         removed_features = data_module.gen_MNAR_datasets(feature_importance, fraction)
-        if args.model == "fwal":
-            if not args.hierarchical:
-                raise ValueError("Feature selection is only supported for hierarchical models")
-            model.update_masks(removed_features)
-        valid_metrics = evaluate(model, data_module.missing_val_dataloader())
-        test_metrics = evaluate(model, data_module.missing_test_dataloader())
+            
+        if args.model in ['lasso', 'rf', 'xgboost']:
+            y_pred_valid = model.predict(data_module.X_valid_missing)
+            y_pred_test = model.predict(data_module.X_test_missing)
+
+            valid_metrics = compute_all_metrics(args, data_module.y_valid, y_pred_valid)
+            test_metrics = compute_all_metrics(args, data_module.y_test, y_pred_test)
+        else:
+            if args.model == "fwal":
+                if not args.hierarchical:
+                    raise ValueError("Feature selection is only supported for hierarchical models")
+                model.update_masks(removed_features)
+            valid_metrics = evaluate(model, data_module.missing_val_dataloader())
+            test_metrics = evaluate(model, data_module.missing_test_dataloader())
         
         wandb_logger.log_metrics({
             'fraction_missing_features'+logging_key: fraction,

@@ -887,7 +887,7 @@ class SEFS(TrainingLightningModule):
 		Returns the feature importance
 		- np.ndarray: The feature importance
 		"""
-		return self.mask_module.feature_importance(self)
+		return self.mask_module.feature_importance()
 
 
 
