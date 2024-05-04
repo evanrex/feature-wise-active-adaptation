@@ -20,6 +20,8 @@ command:
 - fc05ccd7 
 - --notes
 - "fc05ccd7_SEFS_GPU"
+- --batch_size
+- 32 # PBMC is very big
 - ${args}
 
 method: grid

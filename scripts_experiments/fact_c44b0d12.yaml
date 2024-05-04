@@ -1,0 +1,71 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: c44b0d12_fact
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --evaluate_feature_selection
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hierarchical
+- --pretrain
+- --num_pretrain_steps
+- 5000
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- c44b0d12 # FWAL hierarchical TTI all datasets
+- --notes
+- "c44b0d12 fact, tuning our model on all datasets. Evaluating TTI. Evaluating feature selection."
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - poly_binarised_decimalised_synth
+    - mice_protein
+    - COIL20 
+    - Isolet
+    - madelon
+    - USPS
+    - PBMC
+    - finance
+
+  sparsity_regularizer_hyperparam:
+    distribution: categorical
+    values:
+    - 0.0
+    - 0.1
+    - 0.5
+    - 1.0
+    - 10.0
+    - 100.0
+    
+  lr:
+    distribution: categorical
+    values:
+    - 1e-3
+    - 3e-4
+    - 1e-4
+  
+  num_hidden:
+    distribution: categorical
+    values:
+    - 1
+    - 2
+    - 4
+
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2

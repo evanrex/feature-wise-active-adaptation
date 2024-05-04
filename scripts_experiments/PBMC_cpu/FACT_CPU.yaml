@@ -2,24 +2,25 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: fc05ccd7_cae_PBMC
+name: 25dd6c14_fwal_hierarchical_tti_loss
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --model
-- cae
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hierarchical
 - --pretrain
 - --num_pretrain_steps
 - 5000
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC CPU
+- 1 # optimal for HPC
 - --tags
-- fc05ccd7 
+- fc05ccd7 # PBMC
 - --notes
-- "fc05ccd7_cae PBMC"
+- "25dd6c14_fwal_hierarchical_tti_loss"
 - --batch_size
 - 32 # PBMC is very big
 - ${args}
@@ -32,27 +33,24 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # # - gisette 
     # - Isolet
     # - madelon
     # - USPS
-    # # - MNIST
+    # - MNIST
     - PBMC
+    # - finance
 
-  CAE_neurons_ratio:
+  sparsity_regularizer_hyperparam:
     distribution: categorical
     values:
+    - 0.0
     - 0.1
-    - 0.2
-    - 0.3
-    - 0.4
     - 0.5
-    - 0.6
-    - 0.7
-    - 0.8
-    - 0.9
     - 1.0
-    
+    - 2.0
+    - 10.0
+    - 100.0
+
   seed_model_init:  # number of folds
     distribution: categorical
     values:

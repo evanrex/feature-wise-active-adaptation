@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J sefs
+#SBATCH -J fact
 #SBATCH --output=logs/out_%A.out
 #SBATCH --error=logs/err_%A.err
 #SBATCH -A COMPUTERLAB-SL2-CPU
@@ -15,4 +15,4 @@ module purge                               # Removes all modules still loaded
 module load rhel8/default-amp              # REQUIRED - loads the basic environment
 
 
-wandb agent evangeorgerex/fwal/fszoi828
+wandb agent evangeorgerex/fwal/bga4xu49

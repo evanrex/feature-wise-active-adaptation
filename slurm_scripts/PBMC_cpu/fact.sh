@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH -J sefs
+#SBATCH -J job_name
 #SBATCH --output=logs/out_%A.out
 #SBATCH --error=logs/err_%A.err
 #SBATCH -A COMPUTERLAB-SL2-CPU
-#SBATCH --time=10:00:00
+#SBATCH --time=2:00:00
 #SBATCH -p icelake
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -15,4 +15,4 @@ module purge                               # Removes all modules still loaded
 module load rhel8/default-amp              # REQUIRED - loads the basic environment
 
 
-wandb agent evangeorgerex/fwal/fszoi828
+wandb agent evangeorgerex/fwal/58yksz2g
