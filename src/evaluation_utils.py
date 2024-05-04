@@ -83,7 +83,7 @@ def evaluate_test_time_interventions(model, data_module, args, wandb_logger):
             'tti_test_metrics': test_metrics
         })
 
-def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger):
+def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger, logging_key=""):
     
     
     for fraction in np.linspace(0.0,0.9,10):
@@ -96,9 +96,9 @@ def evaluate_feature_selection(model, feature_importance, data_module, args, wan
         test_metrics = evaluate(model, data_module.missing_test_dataloader())
         
         wandb_logger.log_metrics({
-            'fraction_missing_features': fraction,
-            'feature_selection_valid_metrics': valid_metrics,
-            'feature_selection_test_metrics': test_metrics
+            'fraction_missing_features'+logging_key: fraction,
+            'feature_selection_valid_metrics'+logging_key: valid_metrics,
+            'feature_selection_test_metrics'+logging_key: test_metrics
         })
     
     if args.model == "fwal":

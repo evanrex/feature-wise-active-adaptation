@@ -994,7 +994,7 @@ def create_data_module(args):
 			elif dataset in ["COIL20", "gisette", "Isolet", "madelon", "USPS"]:
 				X, y = load_ASU_dataset(args, dataset)
 			elif dataset == "PBMC":
-				X, y = load_PBMC(args)
+				X, y = load_PBMC_small(args)
 			elif dataset == "PBMC_small":
 				X, y = load_PBMC_small(args)
 			elif dataset == "finance":

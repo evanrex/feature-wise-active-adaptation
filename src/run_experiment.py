@@ -272,6 +272,20 @@ def run_experiment(args):
 			for metric_name, metric_value in metrics.items():
 				wandb.run.summary[f"{dataset_name}/{metric_name}"] = metric_value
 
+
+		if args.evaluate_feature_selection:
+			if args.model == 'lasso':
+				feature_importance_max = np.max(np.abs(model.coef_), axis=0)
+				feature_importance_avg = np.mean(np.abs(model.coef_), axis=0)
+				evaluate_feature_selection(model, feature_importance_max, data_module, args, wandb_logger,logging_key="_max")
+				evaluate_feature_selection(model, feature_importance_avg, data_module, args, wandb_logger, logging_key="_mean")
+				
+
+			elif args.model in ['rf', 'xgboost']:
+				feature_importance = model.feature_importances_
+				evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
+			else:
+				raise Exception(f'evaluate_feature_selection not supported for model: {args.model}')
 	#### Pytorch lightning training
 	else:
 
@@ -399,8 +413,8 @@ def run_experiment(args):
 			
 			if args.evaluate_feature_selection:
 				
-				if args.model != "fwal" and not args.hierarchical:
-					raise ValueError("Feature selection is only supported for hierarchical F-Act")
+				if (args.model != "fwal" and not args.hierarchical) and (args.model != 'SEFS'):
+					raise ValueError("Feature selection is only supported for hierarchical F-Act and SEFS")
 				feature_importance = model.feature_importance()
 				evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
 			if args.test_time_interventions == "evaluate_test_time_interventions":
@@ -603,6 +617,12 @@ def parse_arguments(args=None):
 						help='Number of hidden layers in the Prediction Module')
 	parser.add_argument('--P_hidden_dim', type=int, default=50,
 						help='Dimension of each hidden layer in the Prediction Module')
+	# General arguments to override specific module configurations
+	parser.add_argument('--num_hidden', type=int, default=None,
+						help='General number of hidden layers to override module-specific settings')
+	parser.add_argument('--hidden_dim', type=int, default=None,
+						help='General dimension of hidden layers to override module-specific settings')
+
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
 	parser.add_argument('--gamma', type=float, default=1.0, 
@@ -856,6 +876,8 @@ def parse_arguments(args=None):
 		args.patient_preprocessing = "raw"
 	elif args.dataset in ['PBMC', 'PBMC_small']:
 		args.tti_loss_hyperparam = 1
+		args.num_pretrain_steps = 200
+		args.max_steps = 1000
 
 	return args
 
@@ -1047,5 +1069,11 @@ if __name__ == "__main__":
 		else:
 			# Using the soft gumbel activation of the mask to get the sparsity loss
 			args.sparsity_regularizer_hyperparam_0 = 0.0
+   
+	if args.num_hidden is not None:
+		args.R_num_hidden = args.P_num_hidden = args.num_hidden
+
+	if args.hidden_dim is not None:
+		args.R_hidden_dim = args.P_hidden_dim = args.hidden_dim
 
 	run_experiment(args)

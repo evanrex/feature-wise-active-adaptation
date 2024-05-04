@@ -812,7 +812,6 @@ class RelaxedMultiBernoulli(nn.Module):
 			v = torch.matmul(self.L, epsilon.t()).t()  
 			u = Gaussian_CDF(v)
 			mask = torch.sigmoid(torch.log(pi) - torch.log(1. - pi) + torch.log(u) - torch.log(1. - u))
-			# mask = torch.ones_like(x) # TODO put this back after debugging
 		return x * mask, self.pi_logit, pi	
 
 	def necessary_features(self):
@@ -820,6 +819,14 @@ class RelaxedMultiBernoulli(nn.Module):
 		Returns the necessary features
 		"""
 		return self.pi_logit > 0
+
+
+	def feature_importance(self):
+		"""
+		Returns the feature importance
+		- np.ndarray: The feature importance
+		"""
+		return self.pi_logit.detach().cpu().numpy()
 
 
 
@@ -873,6 +880,14 @@ class SEFS(TrainingLightningModule):
 		Returns the necessary features
 		"""
 		return self.mask_module.necessary_features()
+
+
+	def feature_importance(self):
+		"""
+		Returns the feature importance
+		- np.ndarray: The feature importance
+		"""
+		return self.mask_module.feature_importance(self)
 
 
 
