@@ -32,14 +32,14 @@ parameters:
     - PBMC
     - finance
 
-  eta:
+  xgb_eta:
     distribution: categorical
     values:
     - 0.1
     - 0.3
     - 0.5
   
-  max_depth:
+  xgb_max_depth:
     distribution: categorical
     values:
     - 3

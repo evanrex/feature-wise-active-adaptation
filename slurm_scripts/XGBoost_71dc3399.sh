@@ -15,4 +15,4 @@ module purge                               # Removes all modules still loaded
 module load rhel8/default-amp              # REQUIRED - loads the basic environment
 
 
-wandb agent evangeorgerex/fwal/h4bh5xe7
+wandb agent evangeorgerex/fwal/2xlx0rlp

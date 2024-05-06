@@ -249,7 +249,8 @@ def run_experiment(args):
 				eval_metric=eval_metric, use_label_encoder=False,
 				random_state=args.seed_model_init, verbose=True, 
 				early_stopping_rounds=int(args.patience_early_stopping*args.val_check_interval),
-				device='cuda'
+				device='cuda',
+				eta=args.xgb_eta, max_depth=args.xgb_max_depth
 			)
 			model.fit(data_module.X_train, data_module.y_train, eval_set=[(data_module.X_valid, data_module.y_valid)], verbose=True)	
 			importance = model.feature_importances_
@@ -640,6 +641,10 @@ def parse_arguments(args=None):
 	parser.add_argument('--rf_n_estimators', type=int, default=500, help='number of trees in the random forest')
 	parser.add_argument('--rf_max_depth', type=int, default=5, help='maximum depth of the tree')
 	parser.add_argument('--rf_min_samples_leaf', type=int, default=3, help='minimum number of samples in a leaf')
+ 
+	parser.add_argument('--xgb_max_depth', type=int, default=6, help='maximum depth of the tree')
+	parser.add_argument('--xgb_eta', type=float, default=0.3, help='maximum depth of the tree')
+ 
 
 	parser.add_argument('--lgb_learning_rate', type=float, default=0.1)
 	parser.add_argument('--lgb_max_depth', type=int, default=1)
