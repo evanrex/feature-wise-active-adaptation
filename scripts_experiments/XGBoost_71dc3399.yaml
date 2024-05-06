@@ -1,0 +1,55 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: 71dc3399_XGBoost
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --as_MLP_baseline
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC CPU
+- --tags
+- 71dc3399 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "71dc3399_XGBoost. hyperparameter tuning XGBoost "
+- ${args}
+
+method: grid
+parameters:
+  dataset:
+    distribution: categorical
+    values:
+    - poly_binarised_decimalised_synth
+    - mice_protein
+    - COIL20 
+    - Isolet
+    - madelon
+    - USPS
+    - PBMC
+    - finance
+
+  eta:
+    distribution: categorical
+    values:
+    - 0.1
+    - 0.3
+    - 0.5
+  
+  max_depth:
+    distribution: categorical
+    values:
+    - 3
+    - 6
+    - 9
+
+  seed_model_init:  # number of folds
+    distribution: categorical
+    values:
+    - 0
+    - 1
+    - 2
+
