@@ -198,8 +198,7 @@ def relaxed_cholesky(matrix, epsilon=1e-10, attempts = 0):
 def Gaussian_CDF(x):
     return 0.5 * (1. + torch.erf(x / torch.sqrt(torch.tensor(2.0))))
 
-
-def create_model(args, data_module):
+def create_model(args, data_module, checkpoint=None):
 	"""
 	Returns a model instance.
 	"""
@@ -207,15 +206,15 @@ def create_model(args, data_module):
  
 	if args.model == 'fwal':
 		if args.hierarchical:
-			model = FWAL_Hierarchical(args)
+			ModelClass = FWAL_Hierarchical
 		else:
-			model = FWAL(args)
+			ModelClass = FWAL
 	
 	elif args.model=='cae': 
-		model = CAE(args)
+		ModelClass = CAE
   
 	elif args.model=='supervised_cae':
-		model = SupervisedCAE(args)
+		ModelClass = SupervisedCAE
 
 	elif args.model=='SEFS':
 		# 1. compute correlation matrix from train data module
@@ -236,10 +235,16 @@ def create_model(args, data_module):
       		In such cases, the matrix will have at least one eigenvalue that is zero, which means it is not positive definite.
 			'''
 			L = relaxed_cholesky(correlation_matrix)
-		model = SEFS(args, L)
+		args.L = L
+		ModelClass = SEFS
 
 	else:
 		raise Exception(f"The model ${args.model}$ is not supported")
+
+	if checkpoint is not None:
+		model = ModelClass.load_from_checkpoint(checkpoint, args=args)
+	else:
+		model = ModelClass(args)
 
 	return model
 
@@ -831,15 +836,15 @@ class RelaxedMultiBernoulli(nn.Module):
 
 
 class SEFS(TrainingLightningModule):
-	def __init__(self, args, L):
+	def __init__(self, args):
 		super().__init__(args)
 		self.args = args
 		self.log_test_key = None
 		self.learning_rate = args.lr
-		self.L = L
+		self.L = args.L
 
-		self.pre_mask_module = MultiBernoulli(args, L)
-		self.mask_module = RelaxedMultiBernoulli(args, L)
+		self.pre_mask_module = MultiBernoulli(args, args.L)
+		self.mask_module = RelaxedMultiBernoulli(args, args.L)
 
 		self.encoder_module = PredictionModule(args, in_dim=args.num_features, out_dim=args.num_features)
 		

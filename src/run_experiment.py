@@ -273,6 +273,17 @@ def run_experiment(args):
 			for metric_name, metric_value in metrics.items():
 				wandb.run.summary[f"{dataset_name}/{metric_name}"] = metric_value
 
+		
+		if args.evaluate_imputation:
+			if args.model == 'lasso':
+				feature_importance = np.mean(np.abs(model.coef_), axis=0)  # taking mean feature importance
+			elif args.model in ['rf', 'xgboost']:
+				feature_importance = model.feature_importances_
+			evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=feature_importance)
+
+		if args.evaluate_MCAR_imputation:
+			# mean imputation
+			evaluate_MCAR_imputation(model, data_module, args, wandb_logger)
 
 		if args.evaluate_feature_selection:
 			if args.model == 'lasso':
@@ -290,46 +301,44 @@ def run_experiment(args):
 	#### Pytorch lightning training
 	else:
 
+		############################## setting model args ##############################
+  
 		#### Set embedding size if it wasn't provided
 		if args.wpn_embedding_size==-1:
 			args.wpn_embedding_size = args.train_size
 		if args.sparsity_gene_embedding_size==-1:
-			args.sparsity_gene_embedding_size = args.train_size
-
-				
+			args.sparsity_gene_embedding_size = args.train_size			
 		if args.pretrain and (args.num_pretrain_steps!=-1):
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
 			args.max_pretrain_epochs = int(np.ceil((args.num_pretrain_steps) / steps_per_epoch)) 
 			print(f"Pre-Training for max_pretrain_epochs = {args.max_pretrain_epochs}")
-
-
 		if args.max_steps!=-1:
 			# compute the upper rounded number of epochs to training (used for lr scheduler in DKL)
 			steps_per_epoch = np.floor(args.train_size / args.batch_size)
 			args.max_epochs = int(np.ceil((args.max_steps) / steps_per_epoch)) 
 			print(f"Training for max_epochs = {args.max_epochs}")
-
-
-		if args.only_test_time_intervention_eval:
-			if not args.trained_FWAL_model_run_name:
-				raise Exception('--trained_FWAL_model_run_name must be passed if --only_test_time_intervention_eval is passed. ')
-			ckpt_path = os.path.join('fwal',args.trained_FWAL_model_run_name, 'checkpoints')
+		############################## done setting model args ##############################
+   
+		#### Loading model if run name is provided
+		if args.load_trained_model_run_name is not None:
+			
+			ckpt_path = os.path.join(args.data_dir,'fwal',args.load_trained_model_run_name, 'checkpoints')
 			if not os.path.exists(ckpt_path):
 				raise FileNotFoundError(f"Directory not found at {ckpt_path}")
 
 			checkpoint_files = glob.glob(os.path.join(ckpt_path, '*.ckpt'))
 			if not checkpoint_files:
 				raise FileNotFoundError(f"No .ckpt files found in {ckpt_path}")
+
 			checkpoint_path = checkpoint_files[0]
 			checkpoint_files = [file for file in checkpoint_files if not file.endswith('last.ckpt')]
+   
 			if checkpoint_files:
 				checkpoint_path = checkpoint_files[0] 
-			trained_model = FWAL.load_from_checkpoint(checkpoint_path, args=args)
-			if args.test_time_interventions == "evaluate_test_time_interventions":
-				evaluate_test_time_interventions(trained_model, data_module, args, wandb_logger)
-			elif args.test_time_interventions == "assist_test_time_interventions":
-				assist_test_time_interventions(trained_model, data_module, args, wandb_logger)
+    			
+			model = create_model(args, data_module, checkpoint=checkpoint_path)
+		#### Training model
 		else:
 			#### Create model
 			model = create_model(args, data_module)
@@ -340,9 +349,6 @@ def run_experiment(args):
 			else:
 				trainer, checkpoint_callback = train_model(args, model, data_module, wandb_logger)
 			
-			if args.evaluate_all_masks:
-				evaluate_all_masks(args, model,data_module, wandb_logger)
-
 
 			if args.train_on_full_data:
 				checkpoint_path = checkpoint_callback.last_model_path
@@ -411,23 +417,32 @@ def run_experiment(args):
 					'best_mask': mask_as_string_of_ones_and_zeros,
 					'best_mask_parameters': model.mask_module.pi_logit.data
 				})
-			
-			if args.evaluate_feature_selection:
-				
-				if (args.model != "fwal" and not args.hierarchical) and (args.model != 'SEFS'):
-					raise ValueError("Feature selection is only supported for hierarchical F-Act and SEFS")
-				feature_importance = model.feature_importance()
-				evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
-			if args.test_time_interventions == "evaluate_test_time_interventions":
-				# We have just loaded the best model weights for fwal in the prev if statement
-				evaluate_test_time_interventions(model, data_module, args, wandb_logger)
-			elif args.test_time_interventions == "assist_test_time_interventions":
-				assist_test_time_interventions(model, data_module, args, wandb_logger)
     
+		if args.evaluate_imputation:
+			if args.model == 'fwal' and args.as_MLP_baseline:
+				feature_importance = None
+			elif (args.model == "fwal" and args.hierarchical) or (args.model != 'SEFS'):
+				feature_importance = model.feature_importance()
+			else:
+				raise ValueError(f"Feature importance is only supported for hierarchical F-Act, SEFS & MLP for Pytorch models. Not supported for the pytorch model {args.model}")
+			evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=feature_importance)
+		if args.evaluate_MCAR_imputation:
+			evaluate_MCAR_imputation(model, data_module, args, wandb_logger)
+		if args.evaluate_feature_selection:
+			
+			if (args.model != "fwal" and not args.hierarchical) and (args.model != 'SEFS'):
+				raise ValueError("Feature selection is only supported for hierarchical F-Act and SEFS")
+			feature_importance = model.feature_importance()
+			evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
+		if args.test_time_interventions == "evaluate_test_time_interventions":
+			# We have just loaded the best model weights for fwal in the prev if statement
+			evaluate_test_time_interventions(model, data_module, args, wandb_logger)
+		elif args.test_time_interventions == "assist_test_time_interventions":
+			assist_test_time_interventions(model, data_module, args, wandb_logger)
+
 	wandb.finish()
 
 	print("\nExiting from train function..")
-
 	
 def pre_train_model(args, model, data_module, wandb_logger=None):
 	"""
@@ -499,8 +514,6 @@ def pre_train_model(args, model, data_module, wandb_logger=None):
 	
 	return trainer, checkpoint_callback
 
-
-
 def train_model(args, model, data_module, wandb_logger=None, pre_trained_ckpt=None):
 	"""
 	Return 
@@ -569,7 +582,46 @@ def train_model(args, model, data_module, wandb_logger=None, pre_trained_ckpt=No
 	
 	return trainer, checkpoint_callback
 
+def validate_args(args):
+	"""
+	Validate the arguments passed to the script against the run config.
+	"""
+ 
+	api = wandb.Api()
+	run = api.run(f"{'evangeorgerex'}/{'fwal'}/{args.load_trained_model_run_name}")
+	# Load the configuration
+	config = run.config
 
+	args.seed_model_init = config.get('seed_model_init', args.seed_model_init)
+	args.sparsity_regularizer_hyperparam = config.get('sparsity_regularizer_hyperparam', args.sparsity_regularizer_hyperparam)
+	args.pretrain = config.get('pretrain', args.pretrain)
+	args.num_pretrain_steps = config.get('num_pretrain_steps', args.num_pretrain_steps)
+	args.lr = config.get('lr', args.lr)
+	args.as_MLP_baseline = config.get('as_MLP_baseline', args.as_MLP_baseline)
+
+	args.dataset = config.get('dataset', args.dataset)
+ 
+	args.hierarchical = config.get('hierarchical', args.hierarchical)
+	args.num_hidden = config.get('num_hidden', args.num_hidden)
+ 
+	if args.model == 'fwal':
+		pass  
+	elif args.model == 'cae':
+		args.CAE_neurons_ratio = config.get('CAE_neurons_ratio', args.CAE_neurons_ratio)
+		args.num_CAE_neurons = config.get('num_CAE_neurons', args.num_CAE_neurons)
+	elif args.model == 'supervised_cae':
+		args.CAE_neurons_ratio = config.get('CAE_neurons_ratio', args.CAE_neurons_ratio)
+		args.num_CAE_neurons = config.get('num_CAE_neurons', args.num_CAE_neurons)
+	elif args.model == 'SEFS':
+		pass
+	elif args.model == 'xgboost':
+		args.xgb_eta = config.get('xgb_eta', args.xgb_eta)
+		args.xgb_max_depth = config.get('xgb_max_depth', args.xgb_max_depth)
+	elif args.model == 'rf':
+		args.rf_max_depth = config.get('rf_max_depth', args.rf_max_depth)
+	elif args.model =='lasso':
+		args.lasso_C = config.get('lasso_C', args.lasso_C)
+		args.lasso_l1_ratio = config.get('lasso_l1_ratio', args.lasso_l1_ratio)
 
 def parse_arguments(args=None):
 	parser = argparse.ArgumentParser()
@@ -633,7 +685,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--saved_checkpoint_name', type=str, help='name of the wandb artifact name (e.g., model-1dmvja9n:v0)')
 	parser.add_argument('--load_model_weights', action='store_true', dest='load_model_weights', help='True if loading model weights')
 	parser.set_defaults(load_model_weights=False)
-
+	parser.add_argument('--load_trained_model_run_name', type=str, help='name of the wandb run name (e.g., wi1vu9hz)')
+ 
 	####### Scikit-learn parameters
 	parser.add_argument('--lasso_C', type=float, default=1e3, help='lasso regularization parameter')
 	parser.add_argument('--lasso_l1_ratio', type=float, default=1.0, help='lasso l1 ratio parameter') 
@@ -809,6 +862,8 @@ def parse_arguments(args=None):
 	parser.add_argument('--trained_FWAL_model_run_name', type=str, default=None, help='Run id, for example plby9cg4')
 	parser.add_argument('--evaluate_all_masks', action='store_true', default=False, help='Set this flag to enable all mask evaluations.')
 	parser.add_argument('--evaluate_feature_selection', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
+	parser.add_argument('--evaluate_imputation', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
+	parser.add_argument('--evaluate_MCAR_imputation', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
 
 
 
@@ -870,6 +925,9 @@ def parse_arguments(args=None):
 	parser.set_defaults(disable_wandb=False)
 
 	args = parser.parse_args(args)
+ 
+	if args.load_trained_model_run_name is not None:
+		validate_args(args)
 
 	if args.seed_model_mask is None:
 		args.seed_model_mask = args.seed_model_init
@@ -885,7 +943,6 @@ def parse_arguments(args=None):
 		args.max_steps = 1000
 
 	return args
-
 
 if __name__ == "__main__":
 	warnings.filterwarnings("ignore", category=sklearn.exceptions.UndefinedMetricWarning)
@@ -953,10 +1010,14 @@ if __name__ == "__main__":
 		'mice_protein',
   		"COIL20", "gisette", "Isolet", "madelon", "USPS",
 		"PBMC", "PBMC_small",
-		"finance"
+		"finance",
+		"load_from_run_name"
 	]
 	if args.dataset not in SUPPORTED_DATASETS:
 		raise Exception(f"Dataset {args.dataset} not supported. Supported datasets are {SUPPORTED_DATASETS}")
+
+	if args.dataset == "load_from_run_name":
+		assert args.load_trained_model_run_name is not None
 
 	#### Assert custom evaluation with repeated dataset sampling
 	if args.evaluate_with_sampled_datasets or args.custom_train_size or args.custom_valid_size or args.custom_test_size:
