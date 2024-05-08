@@ -2,7 +2,9 @@ import numpy as np
 from models import compute_all_metrics
 import itertools
 import torch
-from sklearn.metrics import f1_score, balanced_accuracy_score, precision_score, recall_score, roc_auc_score
+from sklearn.metrics import f1_score, balanced_accuracy_score, precision_score, recall_score, roc_auc_score, mean_squared_error
+from tqdm import tqdm
+
 
 def evaluate_all_masks(args, model,data_module, wandb_logger):
     
@@ -83,10 +85,100 @@ def evaluate_test_time_interventions(model, data_module, args, wandb_logger):
             'tti_test_metrics': test_metrics
         })
 
+def evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=None,logging_key=""):
+    from hyperimpute.plugins.imputers import Imputers
+    imputers = Imputers()
+    
+    mean_imputer = imputers.get('mean')
+    miwae_imputer = imputers.get('miwae')
+    missforest_imputer = imputers.get('sklearn_missforest')
+    
+    mean_imputer = mean_imputer.fit(data_module.X_train)
+    miwae_imputer = miwae_imputer.fit(data_module.X_train)
+    missforest_imputer = missforest_imputer.fit(data_module.X_train)
+    
+    imputation_methods = {
+        'mean': mean_imputer,
+        'miwae': miwae_imputer,
+        'missforest': missforest_imputer
+    }
+    
+    for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
+        for missingness_type in ['MCAR', 'MNAR']:
+            if missingness_type == 'MNAR' and feature_importance is not None:
+                data_module.gen_MNAR_datasets(feature_importance, fraction, replace_val=np.nan)
+            elif missingness_type == 'MCAR':
+                data_module.gen_MCAR_datasets(fraction, replace_val=np.nan)
+            else:
+                continue
+            
+            for imputation_method in imputation_methods:
+                X_valid_imputed = imputation_methods[imputation_method].transform(data_module.X_valid_missing).to_numpy()
+                X_test_imputed = imputation_methods[imputation_method].transform(data_module.X_test_missing).to_numpy()
+                
+                if args.model in ['lasso', 'rf', 'xgboost']:
+                    y_pred_valid = model.predict(X_valid_imputed)
+                    y_pred_test = model.predict(X_test_imputed)
+
+                    valid_metrics = compute_all_metrics(args, data_module.y_valid, y_pred_valid)
+                    test_metrics = compute_all_metrics(args, data_module.y_test, y_pred_test)
+                else:
+                    valid_metrics = evaluate(model, data_module.missing_dataloader(X_valid_imputed, data_module.y_valid))
+                    test_metrics = evaluate(model, data_module.missing_dataloader(X_test_imputed, data_module.y_test))
+                
+                if fraction > 0:
+                    val_missing_mask = np.isnan(data_module.X_valid_missing)  # Creating the mask where X_test_missing is NaN
+                    val_mse = mean_squared_error(data_module.X_valid[val_missing_mask], X_valid_imputed[val_missing_mask]) 
+                    
+                    test_missing_mask = np.isnan(data_module.X_test_missing)  # Creating the mask where X_test_missing is NaN
+                    test_mse = mean_squared_error(data_module.X_test[test_missing_mask], X_test_imputed[test_missing_mask])  # Calculating MSE only for missing values
+                
+                    valid_metrics['imputation_mse'] = val_mse
+                    test_metrics['imputation_mse'] = test_mse
+                
+                wandb_logger.log_metrics({
+                    'fraction_missing_features'+logging_key: fraction,
+                    imputation_method+'_'+missingness_type+'_imputation_valid_metrics'+logging_key: valid_metrics,
+                    imputation_method+'_'+missingness_type+'_imputation_test_metrics'+logging_key: test_metrics
+                })           
+
+
+def evaluate_MCAR_imputation(model, data_module, args, wandb_logger, logging_key=""):
+    
+    
+    for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
+        removed_features = data_module.gen_MCAR_datasets(fraction)
+            
+        if args.model in ['lasso', 'rf', 'xgboost']:
+            y_pred_valid = model.predict(data_module.X_valid_missing)
+            y_pred_test = model.predict(data_module.X_test_missing)
+
+            valid_metrics = compute_all_metrics(args, data_module.y_valid, y_pred_valid)
+            test_metrics = compute_all_metrics(args, data_module.y_test, y_pred_test)
+        else:
+            if args.model == "fwal":
+                if not args.hierarchical:
+                    raise ValueError("Feature selection is only supported for hierarchical models")
+                model.update_masks(removed_features)
+            valid_metrics = evaluate(model, data_module.missing_val_dataloader())
+            test_metrics = evaluate(model, data_module.missing_test_dataloader())
+        
+        wandb_logger.log_metrics({
+            'fraction_missing_features_MCAR'+logging_key: fraction,
+            'MCAR_imputation_valid_metrics'+logging_key: valid_metrics,
+            'MCAR_imputation_test_metrics'+logging_key: test_metrics
+        })
+    
+    if args.model == "fwal":
+        if not args.hierarchical:
+            raise ValueError("Feature selection is only supported for hierarchical models")
+        model.update_masks(None)
+        
+    
+    
 def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger, logging_key=""):
     
-    
-    for fraction in np.linspace(0.0,0.9,10):
+    for fraction in tqdm(np.linspace(0.0,0.9,10)):
         removed_features = data_module.gen_MNAR_datasets(feature_importance, fraction)
             
         if args.model in ['lasso', 'rf', 'xgboost']:
@@ -104,7 +196,7 @@ def evaluate_feature_selection(model, feature_importance, data_module, args, wan
             test_metrics = evaluate(model, data_module.missing_test_dataloader())
         
         wandb_logger.log_metrics({
-            'fraction_missing_features'+logging_key: fraction,
+            'fraction_missing_features_MNAR'+logging_key: fraction,
             'feature_selection_valid_metrics'+logging_key: valid_metrics,
             'feature_selection_test_metrics'+logging_key: test_metrics
         })

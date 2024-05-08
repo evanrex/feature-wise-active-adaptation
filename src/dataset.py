@@ -841,7 +841,7 @@ class DatasetModule(pl.LightningDataModule):
 		else:
 			raise Exception("Invalid embedding type")
 
-	def gen_MCAR_datasets(self, fraction = 0.1, seed = 0, replace_val = 0):
+	def gen_MCAR_datasets(self, fraction = 0.1, seed = 0, replace_val = 0, include_train = False):
 		"""
 		Missing data mechanism
 		- fraction (float): percentage of missing values
@@ -854,9 +854,9 @@ class DatasetModule(pl.LightningDataModule):
 		missing_mask_valid = np.random.choice([0, 1], size=self.X_valid.shape, p=[1-fraction, fraction])
 		missing_mask_test = np.random.choice([0, 1], size=self.X_test.shape, p=[1-fraction, fraction])
    
-
-		self.X_train_missing = self.X_train.copy()
-		self.X_train_missing[missing_mask_train==1] = replace_val
+		if include_train:
+			self.X_train_missing = self.X_train.copy()
+			self.X_train_missing[missing_mask_train==1] = replace_val
   
 		self.X_valid_missing = self.X_valid.copy()
 		self.X_valid_missing[missing_mask_valid==1] = replace_val
@@ -864,7 +864,7 @@ class DatasetModule(pl.LightningDataModule):
 		self.X_test_missing = self.X_test.copy()
 		self.X_test_missing[missing_mask_test==1] = replace_val
 
-	def gen_MNAR_datasets(self, feature_importance, fraction=0.1, replace_val=0):
+	def gen_MNAR_datasets(self, feature_importance, fraction=0.1, replace_val=0, include_train=False):
 		"""
 		Missing data mechanism
 		- feature_importance (np.ndarray): importance of each feature
@@ -881,6 +881,9 @@ class DatasetModule(pl.LightningDataModule):
 
 		# Apply changes to each dataset
 		for dataset_name in ['train', 'valid', 'test']:
+			if not include_train:
+				if dataset_name == 'train':
+					continue
 			attr_name = f'X_{dataset_name}_missing'
 			if hasattr(self, attr_name):
 				delattr(self, attr_name)
@@ -897,6 +900,12 @@ class DatasetModule(pl.LightningDataModule):
 			removed_features_mask[features_to_remove] = 1
 
 		return torch.Tensor(removed_features_mask)
+
+	def missing_dataloader(self, X_missing, y):
+		missing_dataset = CustomPytorchDataset(X_missing, y)
+
+		return DataLoader(missing_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def missing_val_dataloader(self):
 		self.missing_valid_dataset = CustomPytorchDataset(self.X_valid_missing, self.y_valid)
