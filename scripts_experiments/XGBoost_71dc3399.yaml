@@ -8,7 +8,8 @@ command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --as_MLP_baseline
+- --model
+- xgboost
 - --hpc_run
 - --num_workers
 - 1 # optimal for HPC CPU
