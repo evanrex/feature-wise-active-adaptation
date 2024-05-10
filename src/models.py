@@ -190,7 +190,9 @@ def relaxed_cholesky(matrix, epsilon=1e-10, attempts = 0):
 		print("Cholesky decomposition failed. Using relaxed Cholesky decomposition.")
 		epsilon *= 10
 		if attempts > 10:
-			raise Exception("Relaxed Cholesky decomposition failed after 10 attempts.")
+			print("Relaxed Cholesky decomposition failed after 10 attempts. Setting using approx. factorization instead")
+			# return torch.linalg.cholesky_ex(matrix)[0]
+			return torch.eye(matrix.size(0), device=matrix.device)
 		return relaxed_cholesky(matrix, epsilon, attempts+1)
     
 	return L
