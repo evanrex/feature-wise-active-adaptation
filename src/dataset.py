@@ -744,7 +744,7 @@ class DatasetModule(pl.LightningDataModule):
 
 	def val_dataloader(self):
 		# dataloader with original samples
-		dataloaders = [DataLoader(self.valid_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)]
+		dataloaders = [DataLoader(self.valid_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)]
 
 		# dataloaders for each validation augmentation type
 		if self.args.valid_aug_dropout_p:
@@ -789,9 +789,8 @@ class DatasetModule(pl.LightningDataModule):
 		self.args.val_dataloaders_name = self.val_dataloaders_name # save the name to args, to be able to access them in the model (and use for logging)
 		return dataloaders
 
-
 	def test_dataloader(self):
-		return DataLoader(self.test_dataset, batch_size=128, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
+		return DataLoader(self.test_dataset, batch_size=self.args.batch_size, num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def get_embedding_matrix(self, embedding_type, embedding_size):
 		"""
