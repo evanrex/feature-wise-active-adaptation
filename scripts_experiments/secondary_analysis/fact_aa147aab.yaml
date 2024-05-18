@@ -1,0 +1,48 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: fact_secondary_analysis_aa147aab
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --hierarchical
+- --dataset
+- load_from_run_name 
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --evaluate_MCAR_imputation
+- --evaluate_feature_selection
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- aa147aab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "aa147aab Secondary analysis"
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - bfi5l6qu
+    - ihpfigr4
+    - rhrqy9bb
+    - sj64pl05
+    - dtv0wjox
+    - gp378vp4
+    - vqcdnueq
+    - b8nrupvc
+    - rcacu3yt
+    - swbk9dsz
+    - sawnisk5
+    - dqq6q5ej
+    - 33iwvq59
+    - n0mcba2f
+    - 94j8ch8b
+    - qskac7qn

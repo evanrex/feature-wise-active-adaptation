@@ -1,0 +1,44 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: fact_secondary_analysis_aa147aab_more_mice_protein_retry
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --hierarchical
+- --dataset
+- load_from_run_name 
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --evaluate_MCAR_imputation
+- --evaluate_feature_selection
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- aa147aab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "aa147aab Secondary analysis. Re-doing runs that loaded the wrong ckpt on USPS & finance. Doing runs for first time on PBMC & mice_protein"
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - nh4kxwyz # mice_protein
+    - toim1dzn # mice_protein
+    - cjaj7kri # mice_protein
+    # - 0msrkm0b # mice_protein bad
+    # - 3v8n9qe6 # mice_protein bad
+    # - 3e4jm286 # mice_protein bad
+    # - pqv92piz # PBMC
+    # - v1x1hpro # PBMC
+    # - 33iwvq59 # finance
+    # - dqq6q5ej # finance
+    # - b8nrupvc # USPS
+    # - rcacu3yt # USPS

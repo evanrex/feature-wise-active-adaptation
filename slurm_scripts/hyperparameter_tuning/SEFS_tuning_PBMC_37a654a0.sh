@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH -J job_name
+#SBATCH -J SEFS_PBMC
 #SBATCH --output=logs/out_%A.out
 #SBATCH --error=logs/err_%A.err
 #SBATCH -A COMPUTERLAB-SL2-CPU
@@ -15,4 +15,4 @@ module purge                               # Removes all modules still loaded
 module load rhel8/default-amp              # REQUIRED - loads the basic environment
 
 
-wandb agent evangeorgerex/fwal/4p4opie9
+wandb agent evangeorgerex/fwal/jejc25d5

@@ -2,12 +2,13 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: 0cc983ad_fact
+name: c44b0d12_fact
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
+- --evaluate_feature_selection
 - --test_time_interventions 
 - evaluate_test_time_interventions
 - --hierarchical
@@ -18,13 +19,9 @@ command:
 - --num_workers
 - 1 # optimal for HPC
 - --tags
-- 0cc983ad 
+- ef44f76f # FWAL hierarchical TTI all datasets
 - --notes
-- "0cc983ad fact, tuning our model madelon and mice protein datasets without dropout. Evaluating TTI. "
-- --patience_early_stopping
-- 500
-- --dropout_rate
-- 0
+- "ef44f76f fact, tuning our model on madelon. Evaluating TTI. Evaluating feature selection."
 - ${args}
 
 method: grid
@@ -33,7 +30,7 @@ parameters:
     distribution: categorical
     values:
     # - poly_binarised_decimalised_synth
-    - mice_protein
+    # - mice_protein
     # - COIL20 
     # - Isolet
     - madelon
@@ -44,26 +41,18 @@ parameters:
   sparsity_regularizer_hyperparam:
     distribution: categorical
     values:
-    - 0.0
     - 0.1
-    - 0.5
-    - 1.0
-    - 10.0
-    - 100.0
     
   lr:
     distribution: categorical
     values:
-    - 1e-3
-    - 3e-4
-    - 1e-4
+    - 3e-3
   
   num_hidden:
     distribution: categorical
     values:
-    - 1
-    - 2
     - 4
+
 
   seed_model_init:  # number of folds
     distribution: categorical

@@ -1,0 +1,51 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: SEFS_secondary_analysis_becbadf9
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- SEFS
+- --dataset
+- load_from_run_name 
+- --evaluate_imputation
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- becbadf9 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "becbadf9 Secondary analysis"
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - 4ri15qxr
+    - 8j0jc7hb
+    - n1h3md70
+    - 5wir5gpp
+    - l7x9ro80
+    - cie5vyxw
+    - 7r7np8yl
+    - p8m4bjsz
+    - m30x375m
+    - q23bgu6e
+    - oomxlr29
+    - a3oi8xgt
+    - nii841im
+    - h9kiqdnu
+    - y5o7lz1z
+    - lo2blgf6
+    - 77wuap81
+    - cuvpz3wf
+    - 6rd3gkh9
+    - gjwugdf5
+    - zbey3upy
