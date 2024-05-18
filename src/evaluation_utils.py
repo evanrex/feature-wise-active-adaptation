@@ -89,17 +89,17 @@ def evaluate_imputation(model, data_module, args, wandb_logger, feature_importan
     from hyperimpute.plugins.imputers import Imputers
     imputers = Imputers()
     
-    mean_imputer = imputers.get('mean')
-    miwae_imputer = imputers.get('miwae')
-    missforest_imputer = imputers.get('sklearn_missforest')
+    mean_imputer = imputers.get('mean', random_state=args.seed_model_init)
+    ice_imputer = imputers.get('sklearn_ice', random_state=args.seed_model_init)  # making it smaller so that it can fit on CPU
+    missforest_imputer = imputers.get('sklearn_missforest', random_state=args.seed_model_init)
     
     mean_imputer = mean_imputer.fit(data_module.X_train)
-    miwae_imputer = miwae_imputer.fit(data_module.X_train)
+    ice_imputer = ice_imputer.fit(data_module.X_train)
     missforest_imputer = missforest_imputer.fit(data_module.X_train)
     
     imputation_methods = {
         'mean': mean_imputer,
-        'miwae': miwae_imputer,
+        'ice': ice_imputer,
         'missforest': missforest_imputer
     }
     
