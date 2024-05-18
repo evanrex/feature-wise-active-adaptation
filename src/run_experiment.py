@@ -322,22 +322,35 @@ def run_experiment(args):
    
 		#### Loading model if run name is provided
 		if args.load_trained_model_run_name is not None:
+			def get_epoch_model_paths(directory_path):
+				epoch_files = []
+				for filename in os.listdir(directory_path):
+					if filename.startswith('epoch') and filename.endswith('.ckpt'):
+						full_path = os.path.join(directory_path, filename)
+						epoch_files.append(full_path)
+				return epoch_files
+
+			def get_most_recent_file(file_paths):
+				most_recent_path = None
+				latest_time = 0
+
+				for path in file_paths:
+					modification_time = os.path.getmtime(path)
+					if modification_time > latest_time:
+						latest_time = modification_time
+						most_recent_path = path
+
+				return most_recent_path
 			
-			ckpt_path = os.path.join(args.data_dir,'fwal',args.load_trained_model_run_name, 'checkpoints')
+			ckpt_path = os.path.join(args.data_dir,'fwal',args.load_trained_model_run_name, 'checkpoints') 
 			if not os.path.exists(ckpt_path):
 				raise FileNotFoundError(f"Directory not found at {ckpt_path}")
-
-			checkpoint_files = glob.glob(os.path.join(ckpt_path, '*.ckpt'))
-			if not checkpoint_files:
-				raise FileNotFoundError(f"No .ckpt files found in {ckpt_path}")
-
-			checkpoint_path = checkpoint_files[0]
-			checkpoint_files = [file for file in checkpoint_files if not file.endswith('last.ckpt')]
-   
-			if checkpoint_files:
-				checkpoint_path = checkpoint_files[0] 
-    			
+			ckpts = get_epoch_model_paths(ckpt_path)
+			if len(ckpts) == 0:
+				raise FileNotFoundError(f"No .ckpt files starting eith 'epoch' found at {ckpt_path}")
+			checkpoint_path = get_most_recent_file(ckpts)
 			model = create_model(args, data_module, checkpoint=checkpoint_path)
+   
 		#### Training model
 		else:
 			#### Create model
@@ -421,7 +434,7 @@ def run_experiment(args):
 		if args.evaluate_imputation:
 			if args.model == 'fwal' and args.as_MLP_baseline:
 				feature_importance = None
-			elif (args.model == "fwal" and args.hierarchical) or (args.model != 'SEFS'):
+			elif (args.model == "fwal" and args.hierarchical) or (args.model == 'SEFS'):
 				feature_importance = model.feature_importance()
 			else:
 				raise ValueError(f"Feature importance is only supported for hierarchical F-Act, SEFS & MLP for Pytorch models. Not supported for the pytorch model {args.model}")
