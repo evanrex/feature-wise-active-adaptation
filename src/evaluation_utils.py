@@ -182,7 +182,7 @@ def evaluate_MCAR_imputation(model, data_module, args, wandb_logger, logging_key
     
 def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger, logging_key=""):
     
-    for fraction in tqdm(np.linspace(0.0,0.9,10)):
+    for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
         removed_features = data_module.gen_MNAR_datasets(feature_importance, fraction)
             
         if args.model in ['lasso', 'rf', 'xgboost']:
