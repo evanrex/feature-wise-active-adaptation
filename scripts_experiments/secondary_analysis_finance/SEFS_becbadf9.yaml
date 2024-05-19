@@ -1,0 +1,33 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: SEFS_secondary_analysis_becbadf9_finance
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- SEFS
+- --dataset
+- load_from_run_name 
+- --evaluate_imputation
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- becbadf9 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "becbadf9 Secondary analysis. Repeating finance because they failed."
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - q23bgu6e # finance
+    - oomxlr29 # finance
+    - a3oi8xgt # finance

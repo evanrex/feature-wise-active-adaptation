@@ -1,0 +1,1 @@
+for file in slurm_scripts/secondary_analysis_finance/*.sh; do sbatch "$file"; done
