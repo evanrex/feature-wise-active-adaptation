@@ -90,7 +90,7 @@ def evaluate_imputation(model, data_module, args, wandb_logger, feature_importan
     imputers = Imputers()
     
     mean_imputer = imputers.get('mean', random_state=args.seed_model_init)
-    ice_imputer = imputers.get('sklearn_ice', random_state=args.seed_model_init)  # making it smaller so that it can fit on CPU
+    ice_imputer = imputers.get('sklearn_ice', random_state=args.seed_model_init)
     missforest_imputer = imputers.get('sklearn_missforest', random_state=args.seed_model_init)
     
     mean_imputer = mean_imputer.fit(data_module.X_train)
@@ -113,34 +113,38 @@ def evaluate_imputation(model, data_module, args, wandb_logger, feature_importan
                 continue
             
             for imputation_method in imputation_methods:
-                X_valid_imputed = imputation_methods[imputation_method].transform(data_module.X_valid_missing).to_numpy()
-                X_test_imputed = imputation_methods[imputation_method].transform(data_module.X_test_missing).to_numpy()
+                datasets = {'valid': (data_module.X_valid_missing, data_module.y_valid, 'validation'), 
+                            'test': (data_module.X_test_missing, data_module.y_test, 'test')}
                 
-                if args.model in ['lasso', 'rf', 'xgboost']:
-                    y_pred_valid = model.predict(X_valid_imputed)
-                    y_pred_test = model.predict(X_test_imputed)
+                metrics = {'test':{}, 'valid': {}}
 
-                    valid_metrics = compute_all_metrics(args, data_module.y_valid, y_pred_valid)
-                    test_metrics = compute_all_metrics(args, data_module.y_test, y_pred_test)
-                else:
-                    valid_metrics = evaluate(model, data_module.missing_dataloader(X_valid_imputed, data_module.y_valid))
-                    test_metrics = evaluate(model, data_module.missing_dataloader(X_test_imputed, data_module.y_test))
+                for dataset_name, (dataset, labels, label_text) in datasets.items():
+                    try:
+                        X_imputed = imputation_methods[imputation_method].transform(dataset).to_numpy()
+                        if args.model in ['lasso', 'rf', 'xgboost']:
+                            y_pred = model.predict(X_imputed)
+                            metrics[dataset_name] = compute_all_metrics(args, labels, y_pred)
+                        else:
+                            metrics[dataset_name] = evaluate(model, data_module.missing_dataloader(X_imputed, labels))
+
+                        if fraction > 0:
+                            missing_mask = np.isnan(dataset)
+                            mse = mean_squared_error(data_module.X_valid[missing_mask], X_imputed[missing_mask]) if dataset_name == 'valid' else mean_squared_error(data_module.X_test[missing_mask], X_imputed[missing_mask])
+                            metrics[dataset_name]['imputation_mse'] = mse
+
+                    except Exception as e:
+                        print(f"Imputation failed for {imputation_method} on {label_text} split for fraction {fraction} with Error: {e}")
+
+                valid_metrics = metrics['valid']
+                test_metrics = metrics['test']
                 
-                if fraction > 0:
-                    val_missing_mask = np.isnan(data_module.X_valid_missing)  # Creating the mask where X_test_missing is NaN
-                    val_mse = mean_squared_error(data_module.X_valid[val_missing_mask], X_valid_imputed[val_missing_mask]) 
-                    
-                    test_missing_mask = np.isnan(data_module.X_test_missing)  # Creating the mask where X_test_missing is NaN
-                    test_mse = mean_squared_error(data_module.X_test[test_missing_mask], X_test_imputed[test_missing_mask])  # Calculating MSE only for missing values
+                log_metrics = {'fraction_missing_features'+logging_key: fraction}
+                if valid_metrics:
+                    log_metrics[imputation_method+'_'+missingness_type+'_imputation_valid_metrics'+logging_key] = valid_metrics
+                if test_metrics:
+                    log_metrics[imputation_method+'_'+missingness_type+'_imputation_test_metrics'+logging_key] = test_metrics
                 
-                    valid_metrics['imputation_mse'] = val_mse
-                    test_metrics['imputation_mse'] = test_mse
-                
-                wandb_logger.log_metrics({
-                    'fraction_missing_features'+logging_key: fraction,
-                    imputation_method+'_'+missingness_type+'_imputation_valid_metrics'+logging_key: valid_metrics,
-                    imputation_method+'_'+missingness_type+'_imputation_test_metrics'+logging_key: test_metrics
-                })           
+                wandb_logger.log_metrics(log_metrics)           
 
 
 def evaluate_MCAR_imputation(model, data_module, args, wandb_logger, logging_key=""):
