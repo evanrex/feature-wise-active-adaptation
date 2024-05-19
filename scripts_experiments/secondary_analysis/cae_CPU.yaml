@@ -1,0 +1,59 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: fc05ccd7_cae_secondary
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --dataset
+- load_from_run_name 
+- --evaluate_imputation
+- --model
+- cae
+- --legacy_architecture
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC CPU
+- --tags
+- 825f06f4 
+- --notes
+- "825f06f4_cae secondary"
+- ${args}
+
+method: grid
+parameters:
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - ii9u6l2d
+    - 5exrw8f4
+    - tj64tq2g
+    - mlc47s7c
+    - b9ho9xwr
+    - vwt0ppjl
+    - dkl0yc56
+    - 5pvh1fpu
+    - qic5h6a4
+    - b3a2ob4c
+    - mori0hae
+    - 8p5sr93k
+    - g92z1gfj
+    - zfpn7ire
+    - xp5qd1o8
+    - 0gxjfvc4
+    - 100tdx2j
+    - locgod8m
+    - 8fxmab8q
+    - qofyg26n
+    - ym9c79tk
+    - axbbimg7
+    - y2i3p5mk
+    - 7hn6dy78
+    - 7luthcz4
+    - rgpplyo8
+    - hghw5y17
+    - quxcxwcf
+    - 1srt26yx

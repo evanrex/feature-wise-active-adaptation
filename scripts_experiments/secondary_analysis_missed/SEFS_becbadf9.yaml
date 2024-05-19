@@ -1,0 +1,36 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: SEFS_secondary_analysis_becbadf9_missed
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --model
+- SEFS
+- --dataset
+- load_from_run_name 
+- --evaluate_imputation
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- becbadf9 # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "becbadf9 Secondary analysis. Repeating finance & COIL20 because they failed. PBMC doesn't exist yet so we need to do that first."
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - 4ri15qxr # COIL20
+    - 8j0jc7hb # COIL20
+    - n1h3md70 # COIL20
+    - q23bgu6e # finance
+    - oomxlr29 # finance
+    - a3oi8xgt # finance

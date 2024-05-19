@@ -2,24 +2,25 @@ program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py
 entity: evangeorgerex
 project: fwal # Project name
 
-name: PBMC_SEFS_CPU_retry
+name: fc05ccd7_tuning_PBMC
 
 command:
 - ${env}
 - ${interpreter}
 - ${program}
-- --model
-- SEFS
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --hierarchical
 - --pretrain
 - --num_pretrain_steps
 - 5000
 - --hpc_run
 - --num_workers
-- 1 # optimal for HPC CPU
+- 1 # optimal for HPC
 - --tags
-- fc05ccd7 
+- fc05ccd7 # PBMC
 - --notes
-- "fc05ccd7_SEFS_GPU"
+- "tuning PBMC"
 - --batch_size
 - 32 # PBMC is very big
 - ${args}
@@ -32,13 +33,35 @@ parameters:
     # - poly_binarised_decimalised_synth
     # - mice_protein
     # - COIL20 
-    # # - gisette 
     # - Isolet
     # - madelon
     # - USPS
-    - PBMC
     # - MNIST
-    
+    - PBMC
+    # - finance
+
+  sparsity_regularizer_hyperparam:
+    distribution: categorical
+    values:
+    - 1.0
+    - 10.0
+  
+  dropout_rate:
+    distribution: categorical
+    values:
+    - 0.0
+    - 0.1
+    - 0.2
+
+  lr:
+    distribution: categorical
+    values:
+    - 0.003
+    - 0.001
+    - 0.003
+    - 0.0001
+
+
   seed_model_init:  # number of folds
     distribution: categorical
     values:
