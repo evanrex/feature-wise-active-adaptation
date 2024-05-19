@@ -1005,27 +1005,28 @@ import torch
 from torch import nn
 
 class ReconstructionModule(nn.Module):
-    def __init__(self, args, in_dim, out_dim):
-        super(ReconstructionModule, self).__init__()
-        self.args = args
+	def __init__(self, args, in_dim, out_dim):
+		super(ReconstructionModule, self).__init__()
+		self.args = args
+		
+		# Dynamically create the reconstruction network with dropout
+		layers = []
+		current_dim = in_dim
+		for _ in range(self.args.R_num_hidden):
+			layers.append(nn.Linear(current_dim, self.args.R_hidden_dim))
+			layers.append(nn.ReLU())
+			if not args.legacy_architecture:
+				layers.append(nn.Dropout(self.args.dropout_rate))
+			current_dim = self.args.R_hidden_dim
+		layers.append(nn.Linear(current_dim, out_dim))  # Last layer outputs num_features
         
-        # Dynamically create the reconstruction network with dropout
-        layers = []
-        current_dim = in_dim
-        for _ in range(self.args.R_num_hidden):
-            layers.append(nn.Linear(current_dim, self.args.R_hidden_dim))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(self.args.dropout_rate))
-            current_dim = self.args.R_hidden_dim
-        layers.append(nn.Linear(current_dim, out_dim))  # Last layer outputs num_features
-        
-        self.reconstruction_weights = nn.Sequential(*layers)
+		self.reconstruction_weights = nn.Sequential(*layers)
 
-    def forward(self, x):
-        out = self.reconstruction_weights(x)
-        if self.args.reconstruction_loss == "bce":
-            out = torch.sigmoid(out)
-        return out
+	def forward(self, x):
+		out = self.reconstruction_weights(x)
+		if self.args.reconstruction_loss == "bce":
+			out = torch.sigmoid(out)
+		return out
 
 class PredictionModule(nn.Module):
 	def __init__(self, args, in_dim, out_dim):
