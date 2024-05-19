@@ -223,20 +223,23 @@ def create_model(args, data_module, checkpoint=None):
 		# 2. compute L = Cholesky-decomposition(correlation matrix)
 		args.normalize_reconstruction = False
 		correlation_matrix = compute_correlation_matrix(data_module.train_dataloader())
-		try:
-			L = torch.linalg.cholesky(correlation_matrix)
-		except Exception as e:
-			print(e)
-			print("Cholesky decomposition failed. Using relaxed Cholesky decomposition.")
-			'''
-			This happens when the correlation matrix is not positive definite. By nature of correlation matrices, they cannot be indefinite. 
-   			Therefore the matrix is positive-semidefinite..
-			This can happen if there is perfect multicollinearity between the variables 
-   			(i.e., one variable is a perfect linear combination of others)
-   			or if the number of observed variables exceeds the number of observations. 
-      		In such cases, the matrix will have at least one eigenvalue that is zero, which means it is not positive definite.
-			'''
-			L = relaxed_cholesky(correlation_matrix)
+		if args.dataset == 'PBMC':
+			L = torch.eye(correlation_matrix.size(0), device=correlation_matrix.device)
+		else:
+			try:
+				L = torch.linalg.cholesky(correlation_matrix)
+			except Exception as e:
+				print(e)
+				print("Cholesky decomposition failed. Using relaxed Cholesky decomposition.")
+				'''
+				This happens when the correlation matrix is not positive definite. By nature of correlation matrices, they cannot be indefinite. 
+				Therefore the matrix is positive-semidefinite..
+				This can happen if there is perfect multicollinearity between the variables 
+				(i.e., one variable is a perfect linear combination of others)
+				or if the number of observed variables exceeds the number of observations. 
+				In such cases, the matrix will have at least one eigenvalue that is zero, which means it is not positive definite.
+				'''
+				L = relaxed_cholesky(correlation_matrix)
 		args.L = L
 		ModelClass = SEFS
 
@@ -1025,24 +1028,25 @@ class ReconstructionModule(nn.Module):
         return out
 
 class PredictionModule(nn.Module):
-    def __init__(self, args, in_dim, out_dim):
-        super(PredictionModule, self).__init__()
-        self.args = args
-        
-        # Dynamically create the prediction network with dropout
-        layers = []
-        current_dim = in_dim
-        for _ in range(self.args.P_num_hidden):
-            layers.append(nn.Linear(current_dim, self.args.P_hidden_dim))
-            layers.append(nn.ReLU())
-            layers.append(nn.Dropout(self.args.dropout_rate))
-            current_dim = self.args.P_hidden_dim
-        layers.append(nn.Linear(current_dim, out_dim))  # Last layer outputs num_features
-        
-        self.weights = nn.Sequential(*layers)
+	def __init__(self, args, in_dim, out_dim):
+		super(PredictionModule, self).__init__()
+		self.args = args
+		
+		# Dynamically create the prediction network with dropout
+		layers = []
+		current_dim = in_dim
+		for _ in range(self.args.P_num_hidden):
+			layers.append(nn.Linear(current_dim, self.args.P_hidden_dim))
+			layers.append(nn.ReLU())
+			if not args.legacy_architecture:
+				layers.append(nn.Dropout(self.args.dropout_rate))
+			current_dim = self.args.P_hidden_dim
+		layers.append(nn.Linear(current_dim, out_dim))  # Last layer outputs num_features
+		
+		self.weights = nn.Sequential(*layers)
 
-    def forward(self, x):
-        return self.weights(x)
+	def forward(self, x):
+		return self.weights(x)
 
 
 class FWAL(TrainingLightningModule):

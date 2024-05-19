@@ -432,12 +432,12 @@ def run_experiment(args):
 				})
     
 		if args.evaluate_imputation:
-			if args.model == 'fwal' and args.as_MLP_baseline:
+			if (args.model == 'fwal' and args.as_MLP_baseline) or (args.model in ['cae', 'supervised_cae']):
 				feature_importance = None
 			elif (args.model == "fwal" and args.hierarchical) or (args.model == 'SEFS'):
 				feature_importance = model.feature_importance()
 			else:
-				raise ValueError(f"Feature importance is only supported for hierarchical F-Act, SEFS & MLP for Pytorch models. Not supported for the pytorch model {args.model}")
+				raise ValueError(f"Feature importance is only supported for hierarchical F-Act, SEFS, cae, supervised_cae & MLP for Pytorch models. Not supported for the pytorch model {args.model}")
 			evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=feature_importance)
 		if args.evaluate_MCAR_imputation:
 			evaluate_MCAR_imputation(model, data_module, args, wandb_logger)
@@ -688,6 +688,7 @@ def parse_arguments(args=None):
 						help='General number of hidden layers to override module-specific settings')
 	parser.add_argument('--hidden_dim', type=int, default=None,
 						help='General dimension of hidden layers to override module-specific settings')
+	parser.add_argument('--legacy_architecture', action='store_true', dest='legacy_architecture', help='Set to true to train model without dropout layer (enables compatibility with old architecture). Leave num_hidden and hidden_dim at default for it to work.')
 
 	parser.add_argument('--batchnorm', type=int, default=1, help='if 1, then add batchnorm layers in the main network. If 0, then dont add batchnorm layers')
 	parser.add_argument('--dropout_rate', type=float, default=0.2, help='dropout rate for the main network')
