@@ -1,0 +1,35 @@
+program: /home/er647/projects/feature-wise-active-learning/src/run_experiment.py # Path to the program to run
+entity: evangeorgerex
+project: fwal # Project name
+
+name: fact_mice_protein_secondary
+
+command:
+- ${env}
+- ${interpreter}
+- ${program}
+- --hierarchical
+- --dataset
+- load_from_run_name 
+- --test_time_interventions 
+- evaluate_test_time_interventions
+- --evaluate_MCAR_imputation
+- --evaluate_feature_selection
+- --hpc_run
+- --num_workers
+- 1 # optimal for HPC
+- --tags
+- aa147aab # RUN python ./generate_uuid.py in the terminal to generate a new tag for each experiment
+- --notes
+- "aa147aab Secondary analysis"
+- ${args}
+
+method: grid
+parameters:
+
+  load_trained_model_run_name:
+    distribution: categorical
+    values:
+    - 5le875vr
+    - 6utw0s44
+    - r46u12zd
