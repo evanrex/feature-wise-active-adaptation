@@ -28,12 +28,12 @@ parameters:
   load_trained_model_run_name:
     distribution: categorical
     values:
-    - xgzcuu37 # COIL20
-    - dnsshn1b # COIL20
-    - o88hpkso # COIL20
+    # - xgzcuu37 # COIL20
+    # - dnsshn1b # COIL20
+    # - o88hpkso # COIL20
     - j3q3ue8i # PBMC
     - 6hpzi11o # PBMC
     - qjkk5v8v # PBMC
-    - knse2dro # finance
-    - xtun7bzd # finance
-    - ou92939j # finance
+    # - knse2dro # finance
+    # - xtun7bzd # finance
+    # - ou92939j # finance
