@@ -68,6 +68,19 @@ def reshape_batch(batch):
 
 	return x, y
 
+def reshape_missing_batch(batch):
+	"""
+	When the dataloaders create multiple samples from one original sample, the input has size (batch_size, no_samples, D)
+	
+	This function reshapes the input from (batch_size, no_samples, D) to (batch_size * no_samples, D)
+	"""
+	x, y, mask = batch
+	x = x.reshape(-1, x.shape[-1])
+	mask = mask.reshape(-1, mask.shape[-1])
+	y = y.reshape(-1)
+
+	return x, y, mask
+
 import torch
 
 def aggregate_statistics(data_loader):
@@ -671,6 +684,35 @@ class TrainingLightningModule(pl.LightningModule):
 			self.test_step_outputs.append([])
    
 		self.test_step_outputs[dataloader_idx].append(output)
+  
+		return output
+
+	def missing_test_step(self, batch, batch_idx, dataloader_idx=0):
+		'''accommodates multiple dataloaders'''
+		x, y_true, missing_mask = reshape_missing_batch(batch)
+		x[missing_mask] = 0
+  
+		if self.args.hierarchical:
+			if self.args.test_time_interventions_in_progress:
+				y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features, intervened_features = self.forward(x, test_time=True, k=self.args.num_additional_features)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features, intervened_features)
+			else:
+				y_hat, y_hat_tti, reconstructed_x, masked_x_0, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features, intervened_features = self.forward(x, test_time=True)
+				losses = self.compute_hierarchical_loss(y_true, y_hat, y_hat_tti, masked_x_0, reconstructed_x, sparsity_weights_probs_0, sparsity_weights_probs_1, reconstructed_features, intervened_features)
+   
+		else:
+			if self.args.test_time_interventions_in_progress:
+				y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True, k=self.args.num_additional_features)
+			else:
+				y_hat, x_hat, sparsity_weights = self.forward(x, test_time=True)
+			losses = self.compute_loss(y_true, y_hat, x, x_hat, sparsity_weights)
+
+		output =  {
+			'losses': detach_tensors(losses),
+			'y_true': y_true,
+			'y_pred': torch.argmax(y_hat, dim=1),
+			'y_hat': y_hat.detach().cpu().numpy()
+		}
   
 		return output
 

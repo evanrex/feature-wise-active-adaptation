@@ -903,19 +903,19 @@ class DatasetModule(pl.LightningDataModule):
 	def missing_dataloader(self, X_missing, y):
 		missing_dataset = CustomPytorchDataset(X_missing, y)
 
-		return DataLoader(missing_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+		return DataLoader(missing_dataset, batch_size=self.args.batch_size,
 							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def missing_val_dataloader(self):
 		self.missing_valid_dataset = CustomPytorchDataset(self.X_valid_missing, self.y_valid)
 
-		return DataLoader(self.missing_valid_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+		return DataLoader(self.missing_valid_dataset, batch_size=self.args.batch_size,
 							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 	def missing_test_dataloader(self):
 		self.missing_test_dataset = CustomPytorchDataset(self.X_test_missing, self.y_test)
 
-		return DataLoader(self.missing_test_dataset, batch_size=self.args.batch_size, shuffle=True, drop_last=True,
+		return DataLoader(self.missing_test_dataset, batch_size=self.args.batch_size,
 							num_workers=self.args.num_workers, pin_memory=self.args.pin_memory, persistent_workers=self.args.persistent_workers)
 
 
