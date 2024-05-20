@@ -13,7 +13,7 @@ command:
 - --evaluate_imputation
 - --model
 - cae
-- --legacy_architecture
+# - --legacy_architecture
 - --hpc_run
 - --num_workers
 - 1 # optimal for HPC CPU
