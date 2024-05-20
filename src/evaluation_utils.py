@@ -90,12 +90,12 @@ def evaluate_imputation_PBMC(model, data_module, args, wandb_logger, feature_imp
 
     imputation_methods = ['mean']
     
-    for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
+    for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98, 0.99, 0.999, 0.9999, 1.0]):
         for missingness_type in ['MCAR', 'MNAR']:
             if missingness_type == 'MNAR' and feature_importance is not None:
-                data_module.gen_MNAR_datasets(feature_importance, fraction, replace_val=0)
+                data_module.gen_MNAR_datasets(feature_importance, fraction, replace_val=np.nan)
             elif missingness_type == 'MCAR':
-                data_module.gen_MCAR_datasets(fraction, replace_val=0)
+                data_module.gen_MCAR_datasets(fraction, replace_val=np.nan)
             else:
                 continue
             
@@ -106,21 +106,18 @@ def evaluate_imputation_PBMC(model, data_module, args, wandb_logger, feature_imp
                 metrics = {'test':{}, 'valid': {}}
 
                 for dataset_name, (dataset, labels, label_text) in datasets.items():
-                    try:
-                        X_imputed = dataset
-                        if args.model in ['lasso', 'rf', 'xgboost']:
-                            y_pred = model.predict(X_imputed)
-                            metrics[dataset_name] = compute_all_metrics(args, labels, y_pred)
-                        else:
-                            metrics[dataset_name] = evaluate(model, data_module.missing_dataloader(X_imputed, labels))
+                    X_imputed = dataset
+                    missing_mask = np.isnan(dataset)
+                    X_imputed[missing_mask] = 0
+                    if args.model in ['lasso', 'rf', 'xgboost']:
+                        y_pred = model.predict(X_imputed)
+                        metrics[dataset_name] = compute_all_metrics(args, labels, y_pred)
+                    else:
+                        metrics[dataset_name] = evaluate(model, data_module.missing_dataloader(X_imputed, labels))
 
-                        if fraction > 0:
-                            missing_mask = np.isnan(dataset)
-                            mse = mean_squared_error(data_module.X_valid[missing_mask], X_imputed[missing_mask]) if dataset_name == 'valid' else mean_squared_error(data_module.X_test[missing_mask], X_imputed[missing_mask])
-                            metrics[dataset_name]['imputation_mse'] = mse
-
-                    except Exception as e:
-                        print(f"Imputation failed for {imputation_method} on {label_text} split for fraction {fraction} with Error: {e}")
+                    if fraction > 0:
+                        mse = mean_squared_error(data_module.X_valid[missing_mask], X_imputed[missing_mask]) if dataset_name == 'valid' else mean_squared_error(data_module.X_test[missing_mask], X_imputed[missing_mask])
+                        metrics[dataset_name]['imputation_mse'] = mse
 
                 valid_metrics = metrics['valid']
                 test_metrics = metrics['test']
@@ -136,7 +133,7 @@ def evaluate_imputation_PBMC(model, data_module, args, wandb_logger, feature_imp
 
 def evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=None,logging_key=""):
     if args.dataset == 'PBMC':
-        evaluate_imputation_PBMC(model, data_module, args, wandb_logger, feature_importance=None,logging_key="")
+        evaluate_imputation_PBMC(model, data_module, args, wandb_logger, feature_importance=feature_importance,logging_key=logging_key)
         return
     from hyperimpute.plugins.imputers import Imputers
     imputers = Imputers()
