@@ -198,6 +198,12 @@ def evaluate_imputation(model, data_module, args, wandb_logger, feature_importan
 
 def evaluate_MCAR_imputation(model, data_module, args, wandb_logger, logging_key=""):
     
+    if args.model == "fwal":
+        if args.dataset == 'PBMC':
+            # we're using full TTI for PBMC in these experiments
+            model.args.test_time_interventions_in_progress = True
+            num_necessary_features = int(model.necessary_features().float().sum().item())
+            model.args.num_additional_features  = args.num_features - num_necessary_features
     
     for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
         removed_features = data_module.gen_MCAR_datasets(fraction)
@@ -230,6 +236,14 @@ def evaluate_MCAR_imputation(model, data_module, args, wandb_logger, logging_key
     
     
 def evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger, logging_key=""):
+    
+    if args.model == "fwal":
+        if args.dataset == 'PBMC':
+            # we're using full TTI for PBMC in these experiments
+            model.args.test_time_interventions_in_progress = True
+            num_necessary_features = int(model.necessary_features().float().sum().item())
+            model.args.num_additional_features  = args.num_features - num_necessary_features
+            
     
     for fraction in tqdm([0, 0.2, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.98]):
         removed_features = data_module.gen_MNAR_datasets(feature_importance, fraction)
