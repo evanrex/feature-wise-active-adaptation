@@ -726,7 +726,14 @@ class DatasetModule(pl.LightningDataModule):
 		self.y_valid = y_valid
 		self.X_test = X_test
 		self.y_test = y_test
-
+  
+		if args.retrain_feature_selection:
+			self.gen_selected_datasets(args.feature_importance)
+			self.X_train = self.X_train_selected
+			self.X_valid = self.X_valid_selected	
+			self.X_test = self.X_test_selected
+			args.num_features = self.X_train.shape[1]
+   
 		self.train_dataset = CustomPytorchDataset(X_train, y_train)
 		self.valid_dataset = CustomPytorchDataset(X_valid, y_valid)
 		self.test_dataset = CustomPytorchDataset(X_test, y_test)
@@ -862,6 +869,45 @@ class DatasetModule(pl.LightningDataModule):
 
 		self.X_test_missing = self.X_test.copy()
 		self.X_test_missing[missing_mask_test==1] = replace_val
+	
+	def gen_selected_datasets(self, feature_importance):
+		"""
+		Missing data mechanism
+		- feature_importance (np.ndarray): importance of each feature
+		- fraction (float): percentage of missing values in [0,1]
+
+		Removes the fraction of entire features from the dataset, starting with the least important.
+		"""
+		feature_removal_dict = {
+			'PBMC': 11000,
+			'COIL20': 800,
+			'USPS': 200,
+			'Isolet': 400,
+			'madelon': 480,
+			'mice_protein': 60,
+			'finance': 100
+		}
+		# Calculate the threshold to select features with low importance
+		sorted_indices = np.argsort(feature_importance)  # sort features by importance
+		num_features_to_remove = feature_removal_dict[self.args.dataset]
+		features_to_remove = sorted_indices[:num_features_to_remove]  # select the least important features
+
+		# Apply changes to each dataset
+		for dataset_name in ['train', 'valid', 'test']:
+
+			attr_name = f'X_{dataset_name}_selected'
+			if hasattr(self, attr_name):
+				delattr(self, attr_name)
+
+			dataset = getattr(self, f'X_{dataset_name}')
+			dataset_missing = np.delete(dataset, features_to_remove, axis=1)  # Remove entire columns
+
+			setattr(self, attr_name, dataset_missing)
+
+		removed_features_mask = np.zeros_like(feature_importance, dtype=int)
+		removed_features_mask[features_to_remove] = 1  # Mark the indices in features_to_remove
+
+		return torch.Tensor(removed_features_mask)
 
 	def gen_MNAR_datasets(self, feature_importance, fraction=0.1, replace_val=0, include_train=False):
 		"""

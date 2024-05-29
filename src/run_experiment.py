@@ -287,17 +287,13 @@ def run_experiment(args):
 
 		if args.evaluate_feature_selection:
 			if args.model == 'lasso':
-				feature_importance_max = np.max(np.abs(model.coef_), axis=0)
-				feature_importance_avg = np.mean(np.abs(model.coef_), axis=0)
-				evaluate_feature_selection(model, feature_importance_max, data_module, args, wandb_logger,logging_key="_max")
-				evaluate_feature_selection(model, feature_importance_avg, data_module, args, wandb_logger, logging_key="_mean")
-				
-
+				feature_importance = np.mean(np.abs(model.coef_), axis=0)  # taking mean feature importance
 			elif args.model in ['rf', 'xgboost']:
 				feature_importance = model.feature_importances_
-				evaluate_feature_selection(model, feature_importance, data_module, args, wandb_logger)
 			else:
 				raise Exception(f'evaluate_feature_selection not supported for model: {args.model}')
+			evaluate_imputation(model, data_module, args, wandb_logger, feature_importance=feature_importance)
+
 	#### Pytorch lightning training
 	else:
 
@@ -595,6 +591,48 @@ def train_model(args, model, data_module, wandb_logger=None, pre_trained_ckpt=No
 	
 	return trainer, checkpoint_callback
 
+def load_feature_importance(run):
+    # Load the feature importance
+    history = run.history()
+    
+    max_index = max(int(col.split('_')[-1]) for col in history.columns if 'feature_importances.feature' in col)
+    feature_importances = np.full(max_index + 1, np.nan)
+
+    # Iterate over each column and place the non-NaN value in the corresponding position in the array
+    for col in history.columns:
+        if 'feature_importances.feature' in col:
+            # Extract the feature index from the column name
+            feature_index = int(col.split('_')[-1])
+            # Find the non-NaN value in this column
+            non_nan_value = history[col].dropna().values[0]  # assuming there is exactly one non-NaN value per feature
+            feature_importances[feature_index] = non_nan_value
+    return feature_importances
+
+def load_feature_importance_lasso(run):
+
+    history = run.history()
+
+    # Determine the maximum indices for classes and features
+    max_class_index = max(int(col.split('_')[1]) for col in history.columns if 'class_' in col)
+    max_feature_index = max(int(col.split('_')[-1]) for col in history.columns if 'feature' in col)
+
+    # Initialize a 2D array of NaNs
+    coef = np.full((max_class_index + 1, max_feature_index + 1), np.nan)
+
+    # Iterate over each column and assign values to the coef array
+    for col in history.columns:
+        if 'class_' in col and 'feature' in col:
+            parts = col.split('_')
+            class_index = int(parts[1])
+            feature_index = int(parts[-1])
+            # Find the non-NaN value in this column
+            non_nan_value = history[col].dropna().values[0]  # assuming there is exactly one non-NaN value per feature and class
+            coef[class_index, feature_index] = non_nan_value
+
+    # Now 'coef' is your reconstructed 2D array similar to 'model.coef_' in sklearn Lasso for multi-class problems
+    feature_importance = np.mean(np.abs(coef), axis=0)
+    return feature_importance
+
 def validate_args(args):
 	"""
 	Validate the arguments passed to the script against the run config.
@@ -635,6 +673,14 @@ def validate_args(args):
 	elif args.model =='lasso':
 		args.lasso_C = config.get('lasso_C', args.lasso_C)
 		args.lasso_l1_ratio = config.get('lasso_l1_ratio', args.lasso_l1_ratio)
+
+	if args.retrain_feature_selection:
+		if args.model =='lasso':
+			args.feature_importance = load_feature_importance_lasso(run)
+		elif args.model in ['rf', 'xgboost']:
+			args.feature_importance = load_feature_importance(run)
+		else:
+			raise ValueError(f"Feature importance is not supported for model {args.model}")
 
 def parse_arguments(args=None):
 	parser = argparse.ArgumentParser()
@@ -878,6 +924,7 @@ def parse_arguments(args=None):
 	parser.add_argument('--evaluate_feature_selection', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
 	parser.add_argument('--evaluate_imputation', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
 	parser.add_argument('--evaluate_MCAR_imputation', action='store_true', default=False, help='Set this flag to enable feature selection evaluation.')
+	parser.add_argument('--retrain_feature_selection', action='store_true', default=False, help='Set this flag to enable feature selection evaluation via retraining for the SKLearn models (RF, Lasso, XGB) ')
 
 
 
