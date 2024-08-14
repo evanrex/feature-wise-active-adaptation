@@ -1,1 +1,0 @@
-for file in slurm_scripts/retrain_feature_selection/*.sh; do sbatch "$file"; done

@@ -267,7 +267,6 @@ def create_model(args, data_module, checkpoint=None):
 	return model
 
 
-
 class ConcreteLayer(nn.Module):
 	"""
 	Implementation of a concrete layer from paper "Concrete Autoencoders for Differentiable Feature Selection and Reconstruction"
@@ -331,7 +330,6 @@ class ConcreteLayer(nn.Module):
 		mask = self.sample(deterministic=test_time)   	# size (number_neurons x input_dim)
 		x = torch.matmul(x, mask.T) 		# size (batch_size, number_neurons)
 		return x, None # return additional None for compatibility
-
 
 
 """"
