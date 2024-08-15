@@ -936,7 +936,6 @@ def parse_arguments(args=None):
 	parser.add_argument('--cosine_warm_restart_t_mult', type=float, default=1)
 
 	parser.add_argument('--weight_decay', type=float, default=1e-4)
-	parser.add_argument('--lookahead_optimizer', type=int, default=0, help='Use Lookahead optimizer.')
 	parser.add_argument('--class_weight', type=str, choices=['standard', 'balanced'], default='balanced', 
 						help="If `standard`, all classes use a weight of 1.\
 								If `balanced`, classes are weighted inverse proportionally to their size (see https://scikit-learn.org/stable/modules/generated/sklearn.utils.class_weight.compute_class_weight.html)")

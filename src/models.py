@@ -1,6 +1,3 @@
-# create the GP layer called after the neural network
-# using **one** GP per feature (as in the SV-DKL paper)
-### the outputs of these GPs will be mixed in the softmax likelihood
 from json import encoder
 from math import e, gamma
 from modulefinder import STORE_OPS
@@ -26,7 +23,6 @@ def get_labels_lists(outputs):
 
 	return all_y_true, all_y_pred
 
-
 def compute_all_metrics(args, y_true, y_pred):
 	metrics = {}
 	metrics['balanced_accuracy'] = balanced_accuracy_score(y_true, y_pred)
@@ -37,7 +33,6 @@ def compute_all_metrics(args, y_true, y_pred):
 		metrics['AUROC_weighted'] = roc_auc_score(y_true, y_pred, average='weighted')
 	
 	return metrics
-
 
 def detach_tensors(tensors):
 	"""
@@ -80,8 +75,6 @@ def reshape_missing_batch(batch):
 	y = y.reshape(-1)
 
 	return x, y, mask
-
-import torch
 
 def aggregate_statistics(data_loader):
 	"""
@@ -177,7 +170,6 @@ def compute_correlation_matrix(data_loader):
 	    
 	return correlation_matrix
 
-
 def relaxed_cholesky(matrix, epsilon=1e-10, attempts = 0):
 	"""
 	Performs a relaxed Cholesky decomposition on a positive semi-definite matrix.
@@ -266,7 +258,6 @@ def create_model(args, data_module, checkpoint=None):
 
 	return model
 
-
 class ConcreteLayer(nn.Module):
 	"""
 	Implementation of a concrete layer from paper "Concrete Autoencoders for Differentiable Feature Selection and Reconstruction"
@@ -330,23 +321,6 @@ class ConcreteLayer(nn.Module):
 		mask = self.sample(deterministic=test_time)   	# size (number_neurons x input_dim)
 		x = torch.matmul(x, mask.T) 		# size (batch_size, number_neurons)
 		return x, None # return additional None for compatibility
-
-
-""""
-Metrics
-- all 
-	- balanced_accuracy
-	- F1 - weighted
-	- precision - weighted
-	- recall - weighted
-	- accuracy per class
-- binary
-	- AUROC (binary)
-- loss
-	- total
-	- reconstruction
-	- cross-entropy
-"""
 
 class TrainingLightningModule(pl.LightningModule):
 	"""
@@ -760,9 +734,6 @@ class TrainingLightningModule(pl.LightningModule):
 			optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.args.weight_decay)
 		if self.args.optimizer=='adamw':
 			optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.args.weight_decay, betas=[0.9, 0.98])
-		
-		if self.args.lookahead_optimizer:
-			optimizer = Lookahead(optimizer, la_steps=5, la_alpha=0.5)
 
 		if self.args.lr_scheduler == None:
 			return optimizer
@@ -805,7 +776,6 @@ class TrainingLightningModule(pl.LightningModule):
 					'name': 'lr_scheduler'
 				}
 			}
-
 
 class MultiBernoulli(nn.Module):
 	def __init__(self, args, L):
@@ -877,9 +847,6 @@ class RelaxedMultiBernoulli(nn.Module):
 		- np.ndarray: The feature importance
 		"""
 		return self.pi_logit.detach().cpu().numpy()
-
-
-
 class SEFS(TrainingLightningModule):
 	def __init__(self, args):
 		super().__init__(args)
@@ -938,9 +905,6 @@ class SEFS(TrainingLightningModule):
 		- np.ndarray: The feature importance
 		"""
 		return self.mask_module.feature_importance()
-
-
-
 class SupervisedCAE(TrainingLightningModule):
 	def __init__(self, args):
 		super().__init__(args)
@@ -981,6 +945,7 @@ class SupervisedCAE(TrainingLightningModule):
 		Returns the necessary features
 		"""
 		return self.concrete_layer.sample(deterministic=True).sum(dim=0) > 0
+
 
 class CAE(TrainingLightningModule):
 	def __init__(self, args):
@@ -1041,9 +1006,6 @@ class CAE(TrainingLightningModule):
 		"""
 		return self.concrete_layer.sample(deterministic=True).sum(dim=0) > 0
 
-import torch
-from torch import nn
-
 class ReconstructionModule(nn.Module):
 	def __init__(self, args, in_dim, out_dim):
 		super(ReconstructionModule, self).__init__()
@@ -1088,7 +1050,6 @@ class PredictionModule(nn.Module):
 
 	def forward(self, x):
 		return self.weights(x)
-
 
 class FWAL(TrainingLightningModule):
 	def __init__(self, args):
@@ -1271,8 +1232,6 @@ class FWAL(TrainingLightningModule):
 		prediction = torch.softmax(prediction, dim=1)
 		
 		return prediction
-
-
 
 class FWAL_Hierarchical(TrainingLightningModule):
 	def __init__(self, args):
