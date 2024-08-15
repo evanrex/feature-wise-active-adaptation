@@ -3,6 +3,11 @@
 Codebase for the HI-AI@KDD2024 Worshop paper [From Must to May: Enabling Test-Time Feature
 Imputation and Interventions](https://human-interpretable-ai.github.io/assets/pdf/9_From_Must_to_May_Enabling_Te.pdf).
 
+
+
+![F-Act]([images/output.png](https://github.com/evanrex/feature-wise-active-adaptation/blob/camera_ready/assets/F-Act-1.png))
+
+
 ## Installing the project 
 You must have **conda** installed locally. All project dependencies all included in the conda file: environment.yml.
 
