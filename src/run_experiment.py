@@ -710,7 +710,7 @@ def parse_arguments(args=None):
 
 
 	####### Model
-	parser.add_argument('--model', type=str, choices=['dnn', 'dietdnn', 'lasso', 'rf', 'lgb', 'tabnet', 'fsnet', 'cae', 'lassonet', 'fwal', 'xgboost', 'supervised_cae', 'SEFS'], default='fwal')
+	parser.add_argument('--model', type=str, choices=['lasso', 'rf','cae', 'fwal', 'xgboost', 'supervised_cae', 'SEFS'], default='fwal')
 	parser.add_argument('--num_CAE_neurons', type=int, 
 						help='number of features to select for CAE')
 	parser.add_argument('--CAE_neurons_ratio', type=float, default=1.0,
@@ -1060,12 +1060,6 @@ if __name__ == "__main__":
 
 	#### Assert that the dataset is supported
 	SUPPORTED_DATASETS = [
-		'metabric-pam50', 'metabric-dr',
-		'tcga-2ysurvival', 'tcga-tumor-grade',
-		'lung', 'prostate', 'toxicity', 'cll', 'smk', 
-		'simple_trig_synth', 'simple_linear_synth', 
-  		'poly_binarised_decimalised_mod10_synth', 'poly_binarised_decimalised_synth',
-		'exponential_interaction_synth', 'summed_squares_exponential_synth', 'trigonometric_polynomial_synth',
 		'MNIST',
 		'mice_protein',
   		"COIL20", "gisette", "Isolet", "madelon", "USPS",
